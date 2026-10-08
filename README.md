@@ -1,2 +1,2 @@
-# kalshi-template-trader
-template for prediction market algotrading implementation
+# NotEnoughMarkets (NEM)
+A template for Kalshi algorithmic trading.
