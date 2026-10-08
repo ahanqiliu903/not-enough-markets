@@ -1,0 +1,44 @@
+[project]
+name = "nem"
+version = "0.0.1"
+description = "NotEnoughMarkets: a framework for testing Kalshi trading strategies (backtest, paper, live)."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+nem = "nem.cli:main"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4",
+    "pyright>=1.1.400",
+    "pytest>=8",
+    "pytest-cov>=6",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["nem"]
+branch = true

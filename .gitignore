@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Secrets: never commit. Use env vars (see README).
+.env
+.env.*
+*.pem
+*.key
+credentials*.json
+service-account*.json
+
+# Runtime data
+*.db
+*.sqlite
+*.sqlite3
+out/
+logs/
+
+# Local planning notes (reference private repo)
+template-bot-handoff.md
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
