@@ -14,8 +14,8 @@ Mode = Literal["paper", "live"]
 DecisionKind = Literal["take", "skip", "no_fill"]
 StrategyKey = tuple[str, str]  # (portfolio, strategy)
 
-Level = tuple[float, int]  # (price, contracts)
-# Resting bids per side, best first, as Kalshi reports them.
+Level = tuple[float, float]  # (price, contracts); Kalshi sizes can be fractional
+# Resting bids per side, best (highest) first.
 # Buying YES at p means lifting a NO bid at 1 - p (and vice versa).
 Depth = Mapping[Side, Sequence[Level]]
 
@@ -166,3 +166,17 @@ class Trade:
     @property
     def settled(self) -> bool:
         return self.settled_at is not None
+
+
+@dataclass(frozen=True, slots=True)
+class Settlement:
+    """A market's final outcome."""
+
+    ticker: str
+    series: str
+    window_id: str
+    result: Side
+    settled_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_aware("settled_at", self.settled_at)

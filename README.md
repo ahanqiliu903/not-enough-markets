@@ -14,7 +14,7 @@ A template for Kalshi algorithmic trading.
 > It is meant to be an all-in-one home for automated prediction market trading.
 
 > [!NOTE]
-> **Work in progress.** The core building blocks exist, but nothing trades yet, not even on paper. See [Roadmap](#roadmap).
+> **Work in progress.** You can record live Kalshi market data today, but nothing trades yet, not even on paper. See [Roadmap](#roadmap).
 
 ## What is this for?
 
@@ -101,7 +101,7 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 |---|---|---|
 | ✅ | **M0 Skeleton** | Packaging (uv), lint (ruff), strict typing (pyright), tests (pytest), secret scanning, CI |
 | ✅ | **M1 Core** | Portfolio/strategy config with validation, plugin registry, SQLite store, look-ahead-safe strategy context, Kalshi window-code math |
-| ⬜ | **M2 Market data** | Kalshi read client and auth, `nem record` to collect market snapshots, replay from recorded data |
+| ✅ | **M2 Market data** | Kalshi read client and auth, `nem record` to collect market snapshots and settlements, replay from recorded data |
 | ⬜ | **M3 Paper trading** | The trading loop, paper broker with fees and realistic fills, `extreme_favorite` signal, `nem init` / `nem portfolio` / `nem strategy` commands, `make demo` |
 | ⬜ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
 | ⬜ | **M5 24/7 operation** | systemd service, heartbeats, `nem status` / `nem halt` / `nem resume` |
@@ -110,6 +110,18 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 | ⬜ | **M8 Docs** | Lessons from running live, "write a signal" guide, a worked case study |
 
 Later: the agent workflow (hypothesis in plain English → portfolio config), and a website view of portfolios and strategies.
+
+## Recording market data
+
+Recording takes calendar time, so start it early (ideally 24/7 on a VPS). No Kalshi account needed: public market data doesn't require an API key.
+
+```bash
+uv run nem record --series KXBTC15M --series KXETH15M        # poll every 5s, forever
+uv run nem record --series KXBTC15M --interval 10 --depth 20  # slower, deeper orderbook
+uv run nem record --series KXBTC15M --once                    # single poll, then exit
+```
+
+Each poll stores every open market's top of book and orderbook depth to `data/nem.db` (SQLite). Once a market closes, the recorder fetches its result, so recorded data can later be replayed and settled. Network errors are logged and retried on the next poll.
 
 ## Development
 

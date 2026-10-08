@@ -6,6 +6,8 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
+    "cryptography>=50.0.2",
+    "httpx>=0.28.1",
     "pydantic>=2.14.0",
     "pyyaml>=6.0.3",
 ]
@@ -35,7 +37,7 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-local-folder = ["factories"]
+known-local-folder = ["factories", "kalshi_mock"]
 
 [tool.pyright]
 include = ["src", "tests"]

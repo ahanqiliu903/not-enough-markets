@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from nem.core.types import Fill, Order
+from nem.core.types import Fill, Order, Settlement
 from nem.store import Store, StoreError
 from nem.store.sqlite import SCHEMA_VERSION
 
@@ -135,3 +135,25 @@ def test_heartbeats(store: Store) -> None:
     store.heartbeat(T0, "runner", "ok")
     store.heartbeat(T0 + timedelta(seconds=5), "runner", "ok", *KEY)
     assert store.last_heartbeat("runner") == T0 + timedelta(seconds=5)
+
+
+def test_settlements(store: Store) -> None:
+    snap = make_snapshot()
+    settled = Settlement(snap.ticker, snap.series, snap.window_id, "yes", snap.close_time)
+    store.insert_snapshot(snap)
+    assert store.unsettled_tickers(snap.close_time - timedelta(seconds=1)) == []  # still open
+    assert store.unsettled_tickers(snap.close_time) == [snap.ticker]
+
+    store.record_settlement(settled)
+    store.record_settlement(Settlement(snap.ticker, snap.series, snap.window_id, "no", T0))
+    assert store.settlement(snap.ticker) == settled  # first write wins
+    assert store.settlement(snap.ticker, as_of=snap.close_time - timedelta(seconds=1)) is None
+    assert store.unsettled_tickers(snap.close_time) == []
+    assert store.settlement("unknown") is None
+
+
+def test_snapshot_depth_keeps_fractional_sizes(store: Store) -> None:
+    snap = make_snapshot(depth={"yes": [(0.88, 817.01)], "no": []})
+    store.insert_snapshot(snap)
+    [back] = store.iter_snapshots()
+    assert back.depth["yes"] == [(0.88, 817.01)]

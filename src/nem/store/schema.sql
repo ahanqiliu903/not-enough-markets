@@ -17,6 +17,15 @@ CREATE TABLE snapshots (               -- powers replay and backtests
     depth_json  TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX snapshots_series_ts ON snapshots (series, ts);
+CREATE INDEX snapshots_ticker ON snapshots (ticker);
+
+CREATE TABLE settlements (             -- market outcomes, so replay can settle trades
+    ticker      TEXT PRIMARY KEY,
+    series      TEXT NOT NULL,
+    window_id   TEXT NOT NULL,
+    result      TEXT NOT NULL CHECK (result IN ('yes', 'no')),
+    settled_at  TEXT NOT NULL
+);
 
 CREATE TABLE signals (                 -- every signal, taken or not; `reason` says why
     id          INTEGER PRIMARY KEY,

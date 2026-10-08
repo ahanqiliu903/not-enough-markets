@@ -20,6 +20,7 @@ from nem.core.types import (
     MarketSnapshot,
     Mode,
     Order,
+    Settlement,
     Side,
     Signal,
     StrategyKey,
@@ -45,7 +46,7 @@ def _dt(s: str) -> datetime:
 
 def _depth_from_json(s: str) -> Depth:
     raw: dict[Side, list[list[Any]]] = json.loads(s)
-    return {side: [(float(p), int(q)) for p, q in levels] for side, levels in raw.items()}
+    return {side: [(float(p), float(q)) for p, q in levels] for side, levels in raw.items()}
 
 
 def _strategies_filter(strategies: Sequence[StrategyKey]) -> tuple[str, list[str]]:
@@ -89,24 +90,32 @@ class Store:
     # --- snapshots ---------------------------------------------------------
 
     def insert_snapshot(self, snap: MarketSnapshot) -> None:
-        depth = {side: [list(level) for level in levels] for side, levels in snap.depth.items()}
+        self.insert_snapshots([snap])
+
+    def insert_snapshots(self, snaps: Sequence[MarketSnapshot]) -> None:
+        """Insert in one transaction (one poll's worth)."""
         with self._conn:
-            self._conn.execute(
+            self._conn.executemany(
                 "INSERT INTO snapshots (ts, series, window_id, ticker, open_time, close_time,"
                 " yes_bid, yes_ask, no_bid, no_ask, depth_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    _ts(snap.ts),
-                    snap.series,
-                    snap.window_id,
-                    snap.ticker,
-                    _ts(snap.open_time),
-                    _ts(snap.close_time),
-                    snap.yes_bid,
-                    snap.yes_ask,
-                    snap.no_bid,
-                    snap.no_ask,
-                    json.dumps(depth),
-                ),
+                [
+                    (
+                        _ts(snap.ts),
+                        snap.series,
+                        snap.window_id,
+                        snap.ticker,
+                        _ts(snap.open_time),
+                        _ts(snap.close_time),
+                        snap.yes_bid,
+                        snap.yes_ask,
+                        snap.no_bid,
+                        snap.no_ask,
+                        json.dumps(
+                            {side: [list(lv) for lv in lvs] for side, lvs in snap.depth.items()}
+                        ),
+                    )
+                    for snap in snaps
+                ],
             )
 
     def iter_snapshots(
@@ -144,6 +153,46 @@ class Store:
                 no_ask=r["no_ask"],
                 depth=_depth_from_json(r["depth_json"]),
             )
+
+    # --- settlements --------------------------------------------------------
+
+    def record_settlement(self, settlement: Settlement) -> None:
+        """Idempotent: recording the same market twice keeps the first row."""
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO settlements (ticker, series, window_id, result, settled_at)"
+                " VALUES (?,?,?,?,?)",
+                (
+                    settlement.ticker,
+                    settlement.series,
+                    settlement.window_id,
+                    settlement.result,
+                    _ts(settlement.settled_at),
+                ),
+            )
+
+    def settlement(self, ticker: str, as_of: datetime | None = None) -> Settlement | None:
+        """The market's outcome, or None if unknown (or not yet settled as of `as_of`)."""
+        sql = "SELECT * FROM settlements WHERE ticker = ?"
+        args = [ticker]
+        if as_of is not None:
+            sql += " AND settled_at <= ?"
+            args.append(_ts(as_of))
+        r = self._conn.execute(sql, args).fetchone()
+        if r is None:
+            return None
+        return Settlement(
+            r["ticker"], r["series"], r["window_id"], r["result"], _dt(r["settled_at"])
+        )
+
+    def unsettled_tickers(self, now: datetime) -> list[str]:
+        """Recorded markets that have closed but have no settlement row yet."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT ticker FROM snapshots WHERE close_time <= ?"
+            " AND ticker NOT IN (SELECT ticker FROM settlements) ORDER BY ticker",
+            (_ts(now),),
+        )
+        return [r[0] for r in rows]
 
     # --- signals, orders, fills -------------------------------------------
 
