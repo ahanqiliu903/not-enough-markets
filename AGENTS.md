@@ -116,6 +116,7 @@ uv run nem run                # paper-trade continuously (records data too)
 uv run nem summary            # statistics per strategy
 uv run nem status             # process health, halts
 uv run nem halt SCOPE --reason "..." / uv run nem resume SCOPE
+uv run nem help [COMMAND]     # every command and option, generated from the CLI itself
 ```
 
 ## Where things are

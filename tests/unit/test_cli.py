@@ -13,9 +13,35 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert __version__ in capsys.readouterr().out
 
 
-def test_no_args_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+def test_no_args_prints_overview(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
-    assert "usage: nem" in capsys.readouterr().out
+    assert "Paper trading" in capsys.readouterr().out
+    assert main(["-h"]) == 0
+    assert "nem help COMMAND" in capsys.readouterr().out
+
+
+def test_help_overview_lists_every_command(capsys: pytest.CaptureFixture[str]) -> None:
+    from nem.cli import COMMANDS, HELP_GROUPS, build_parser
+
+    _, cmds = build_parser()
+    grouped = {name for _, names in HELP_GROUPS for name in names}
+    leaf = {n for n in cmds.parsers if not any(o.startswith(f"{n} ") for o in cmds.parsers)}
+    assert grouped == leaf  # a new command must be added to `nem help`
+    assert set(COMMANDS) | {"help"} == {n.split()[0] for n in cmds.parsers}
+    assert main(["help"]) == 0
+    out = capsys.readouterr().out
+    assert "  nem run [--dir DIR] [--db DB]" in out
+    assert "      paper-trade every portfolio on live Kalshi prices" in out
+    assert "[-h]" not in out
+
+
+def test_help_topic(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["help", "portfolio", "new"]) == 0
+    out = capsys.readouterr().out
+    assert "usage: nem portfolio new" in out
+    assert "starting paper balance" in out
+    assert main(["help", "bogus"]) == 1
+    assert "unknown command 'bogus'" in capsys.readouterr().err
 
 
 def test_record_requires_series(capsys: pytest.CaptureFixture[str]) -> None:

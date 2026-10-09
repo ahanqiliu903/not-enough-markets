@@ -159,6 +159,8 @@ Keep it running on a server: see [Running 24/7](#running-247).
 
 Which series to trade: [docs/kalshi-tickers.txt](docs/kalshi-tickers.txt) lists the crypto 15-minute and daily temperature series, with their settlement sources (always read a market's rules before trading it). Working with a coding agent? Point it at [AGENTS.md](AGENTS.md).
 
+`uv run nem help` lists every command with its options; `uv run nem help run` shows one in detail.
+
 More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
 
 ## Reading the statistics

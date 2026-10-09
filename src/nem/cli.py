@@ -6,7 +6,7 @@ import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from nem import __version__
 
@@ -28,75 +28,134 @@ def _when(s: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="nem", description="NotEnoughMarkets")
-    parser.add_argument("--version", action="version", version=f"nem {__version__}")
-    sub = parser.add_subparsers(dest="command")
+# Commands in the order `nem help` shows them.
+HELP_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Getting started", ("init", "demo")),
+    ("Portfolios and strategies", ("portfolio new", "portfolio list", "portfolio show",
+                                   "strategy add", "validate")),
+    ("Paper trading", ("run", "replay")),
+    ("Results", ("summary", "report")),
+    ("Operations (24/7)", ("status", "halt", "resume")),
+    ("Market data", ("record", "export")),
+    ("Help", ("help",)),
+)  # fmt: skip
 
-    def with_dir(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
-        p.add_argument("--dir", type=Path, default=DEFAULT_DIR, help=f"default: {DEFAULT_DIR}")
+
+class SubParsers(Protocol):
+    """What argparse's (private) subparsers action offers."""
+
+    def add_parser(self, name: str, **kwargs: Any) -> argparse.ArgumentParser: ...
+
+
+class Commands:
+    """Every (sub)command parser by name, e.g. "run" or "portfolio new", for `nem help`."""
+
+    def __init__(self) -> None:
+        self.parsers: dict[str, argparse.ArgumentParser] = {}
+        self.helps: dict[str, str] = {}
+
+    def add(
+        self,
+        sub: "SubParsers",
+        name: str,
+        help_text: str,
+        prefix: str = "",
+    ) -> argparse.ArgumentParser:
+        p = sub.add_parser(name, help=help_text, description=help_text)
+        full = f"{prefix} {name}".strip()
+        self.parsers[full] = p
+        self.helps[full] = help_text
         return p
 
-    with_dir(sub.add_parser("init", help="create your first paper portfolio (interactive)"))
 
-    port = sub.add_parser("portfolio", help="create, list and show portfolios")
+def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
+    parser = argparse.ArgumentParser(
+        prog="nem", description="NotEnoughMarkets: test Kalshi trading ideas", add_help=False
+    )
+    parser.add_argument("-h", "--help", action="store_true", help="show all commands")
+    parser.add_argument("--version", action="version", version=f"nem {__version__}")
+    sub = parser.add_subparsers(dest="command")
+    cmds = Commands()
+
+    def with_dir(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        p.add_argument(
+            "--dir",
+            type=Path,
+            default=DEFAULT_DIR,
+            help=f"portfolio files (default: {DEFAULT_DIR})",
+        )
+        return p
+
+    def with_db(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        p.add_argument(
+            "--db", type=Path, default=DEFAULT_DB, help=f"database (default: {DEFAULT_DB})"
+        )
+        return p
+
+    with_dir(cmds.add(sub, "init", "create your first paper portfolio (asks name and balance)"))
+
+    port = cmds.add(sub, "portfolio", "create, list and show portfolios")
     port_sub = port.add_subparsers(dest="action", required=True)
-    new = with_dir(port_sub.add_parser("new", help="create a paper portfolio"))
-    new.add_argument("name")
-    new.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
-    with_dir(port_sub.add_parser("list", help="list portfolios"))
-    show = with_dir(port_sub.add_parser("show", help="show a portfolio's strategies"))
+    new = with_dir(cmds.add(port_sub, "new", "create a paper portfolio file", "portfolio"))
+    new.add_argument("name", help="lowercase name, e.g. research")
+    new.add_argument("--balance", type=float, default=1000.0, help="starting paper balance in $")
+    with_dir(
+        cmds.add(port_sub, "list", "list portfolios: mode, capital, active strategies", "portfolio")
+    )
+    show = with_dir(
+        cmds.add(port_sub, "show", "show a portfolio's strategies and plugins", "portfolio")
+    )
     show.add_argument("name")
 
-    strat = sub.add_parser("strategy", help="add strategies to a portfolio")
+    strat = cmds.add(sub, "strategy", "add strategies to a portfolio")
     strat_sub = strat.add_subparsers(dest="action", required=True)
-    add = with_dir(strat_sub.add_parser("add", help="append a strategy template to edit"))
-    add.add_argument("portfolio")
-    add.add_argument("name")
-    add.add_argument("--series", required=True, help="e.g. KXBTC15M")
+    add = with_dir(
+        cmds.add(strat_sub, "add", "append a strategy template to a portfolio file", "strategy")
+    )
+    add.add_argument("portfolio", help="portfolio name")
+    add.add_argument("name", help="strategy name, e.g. fav90")
+    add.add_argument("--series", required=True, help="Kalshi series, e.g. KXBTC15M")
 
-    with_dir(sub.add_parser("validate", help="check every portfolio file and plugin"))
+    with_dir(cmds.add(sub, "validate", "check every portfolio file and plugin before running"))
 
-    run = with_dir(sub.add_parser("run", help="paper-trade every portfolio on live data"))
-    run.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
-    run.add_argument("--depth", type=int, default=10, help="orderbook levels for fills")
-    run.add_argument("--once", action="store_true", help="one tick, then exit")
+    run = with_db(with_dir(cmds.add(
+        sub, "run", "paper-trade every portfolio on live Kalshi prices (records data too)"
+    )))  # fmt: skip
+    run.add_argument("--depth", type=int, default=10, help="orderbook levels kept for fills")
+    run.add_argument("--once", action="store_true", help="one tick, then exit (smoke test)")
     run.add_argument(
         "--record-series", action="append", help="also record this series (repeatable)"
     )
 
-    st = with_dir(sub.add_parser("status", help="process health, halts, strategy activity"))
-    st.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
+    st = with_db(with_dir(cmds.add(sub, "status", "process health, halts, per-strategy activity")))
     st.add_argument(
-        "--expect", default="runner", help="processes that should be up (comma-separated)"
+        "--expect", default="runner", help="processes that should be up, comma-separated"
     )
-    st.add_argument("--max-age", default="2m", help="heartbeat older than this = stale")
+    st.add_argument("--max-age", default="2m", help="heartbeat older than this is stale")
 
     for name, help_text in (
-        ("halt", "kill switch: stop new entries (all, a portfolio, or portfolio/strategy)"),
-        ("resume", "undo a halt"),
+        ("halt", "kill switch: stop new entries (everything, a portfolio, or one strategy)"),
+        ("resume", "undo a halt (same scope)"),
     ):
-        h = with_dir(sub.add_parser(name, help=help_text))
+        h = with_db(with_dir(cmds.add(sub, name, help_text)))
         h.add_argument("scope", nargs="?", default="*", help='"*" (default), NAME or NAME/STRATEGY')
-        h.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
         if name == "halt":
             h.add_argument("--reason", required=True, help="why (shown by `nem status`)")
 
-    rep = with_dir(sub.add_parser("replay", help="run portfolios over recorded data"))
-    rep.add_argument("--data", type=Path, required=True, help="database recorded by `nem record`")
+    rep = with_dir(cmds.add(sub, "replay", "run portfolios over recorded data (backtest)"))
+    rep.add_argument("--data", type=Path, required=True, help="database recorded by nem run/record")
     rep.add_argument("--out", type=Path, help="results database (default: temporary)")
     rep.add_argument("--from", dest="start", type=_when, help="ISO time, e.g. 2026-10-08T18:00")
-    rep.add_argument("--to", dest="end", type=_when)
+    rep.add_argument("--to", dest="end", type=_when, help="ISO time (exclusive)")
 
-    demo = sub.add_parser("demo", help="replay bundled sample data with example portfolios")
+    demo = cmds.add(sub, "demo", "replay the bundled sample data with the example portfolios")
     demo.add_argument("--data", type=Path, default=DEMO_DATA, help="recorded fixture (.jsonl.gz)")
     demo.add_argument("--dir", type=Path, default=DEMO_DIR, help=f"default: {DEMO_DIR}")
-    exp = sub.add_parser("export", help="save a recorded database as a portable fixture")
-    exp.add_argument("--db", type=Path, default=DEFAULT_DB)
+    exp = with_db(cmds.add(sub, "export", "save recorded data as a portable .jsonl.gz file"))
     exp.add_argument("--out", type=Path, required=True, help="e.g. sample.jsonl.gz")
 
     def with_stats(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
-        p.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
+        with_db(p)
         p.add_argument(
             "--edge", type=float, default=0.02, help="edge per contract to test for (0.02 = 2c)"
         )
@@ -104,24 +163,64 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--power", type=float, default=0.8, help="chance of detecting the edge")
         return p
 
-    with_stats(with_dir(sub.add_parser("summary", help="results and statistics so far")))
-    rpt = with_stats(
-        with_dir(
-            sub.add_parser("report", help="statistics, published to each portfolio's reporters")
-        )
+    with_stats(
+        with_dir(cmds.add(sub, "summary", "statistics per strategy: win rate vs break-even"))
     )
+    rpt = with_stats(with_dir(cmds.add(
+        sub, "report", "statistics, published to each portfolio's reporters (CSV, Sheets)"
+    )))  # fmt: skip
     rpt.add_argument("--every", help="repeat on this schedule, e.g. 5m (default: once)")
     rpt.add_argument("--no-publish", action="store_true", help="print only")
 
-    rec = sub.add_parser("record", help="record live Kalshi snapshots and settlements")
+    rec = with_db(cmds.add(sub, "record", "record Kalshi market data without trading"))
     rec.add_argument(
         "--series", action="append", required=True, help="series ticker, e.g. KXBTC15M (repeatable)"
     )
-    rec.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
     rec.add_argument("--interval", type=float, default=5.0, help="seconds between polls")
     rec.add_argument("--depth", type=int, default=10, help="orderbook levels to keep (0 = none)")
     rec.add_argument("--once", action="store_true", help="poll once and exit")
-    return parser
+
+    hlp = cmds.add(sub, "help", "list commands, or show every option of one: nem help run")
+    hlp.add_argument("topic", nargs="*", help="a command, e.g. run or portfolio new")
+    return parser, cmds
+
+
+def _usage(p: argparse.ArgumentParser) -> str:
+    """`nem run [--dir DIR] ...` without argparse's `usage:` prefix, -h, or line wrapping."""
+    text = " ".join(p.format_usage().split())
+    return text.removeprefix("usage: ").replace(" [-h]", "")
+
+
+def overview(cmds: Commands) -> str:
+    lines = [
+        f"NotEnoughMarkets {__version__}: test Kalshi trading ideas with paper trading and",
+        "honest statistics. Defaults: portfolios in portfolios/, data in data/nem.db.",
+    ]
+    for group, names in HELP_GROUPS:
+        lines += ["", group]
+        for name in names:
+            lines.append(f"  {_usage(cmds.parsers[name])}")
+            lines.append(f"      {cmds.helps[name]}")
+    lines += [
+        "",
+        "Every option of a command: nem help COMMAND (e.g. nem help run, nem help portfolio new)",
+        "Docs: README.md, deploy/RUNBOOK.md, AGENTS.md, docs/kalshi-tickers.txt",
+    ]
+    return "\n".join(lines)
+
+
+def cmd_help(args: argparse.Namespace, cmds: Commands) -> int:
+    topic = " ".join(args.topic)
+    if not topic:
+        print(overview(cmds))
+        return 0
+    parser = cmds.parsers.get(topic)
+    if parser is None:
+        known = ", ".join(sorted(n for n in cmds.parsers if " " not in n))
+        print(f"unknown command {topic!r}. Commands: {known}", file=sys.stderr)
+        return 1
+    print(parser.format_help())
+    return 0
 
 
 def _load(directory: Path) -> "list[PortfolioConfig]":
@@ -456,16 +555,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     from nem.core.config import ConfigError
     from nem.engine.runtime import BuildError
 
-    parser = build_parser()
+    parser, cmds = build_parser()
     args = parser.parse_args(argv)
+    if args.help or args.command is None:
+        print(overview(cmds))
+        return 0
+    if args.command == "help":
+        return cmd_help(args, cmds)
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per request is too noisy
-    command = COMMANDS.get(args.command or "")
-    if command is None:
-        parser.print_help()
-        return 0
+    command = COMMANDS[args.command]
     try:
         return command(args)
     except (ConfigError, BuildError) as e:
