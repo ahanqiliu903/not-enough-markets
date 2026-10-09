@@ -14,7 +14,7 @@ import httpx
 
 from nem.core.clock import Clock, SystemClock
 from nem.market.kalshi import KalshiError
-from nem.market.source import KalshiSource
+from nem.market.source import KalshiSource, Tick
 from nem.store import Store
 
 log = logging.getLogger(__name__)
@@ -24,8 +24,12 @@ PROCESS = "recorder"
 
 @dataclass(frozen=True, slots=True)
 class StepResult:
-    snapshots: int
+    tick: Tick
     settled: int
+
+    @property
+    def snapshots(self) -> int:
+        return len(self.tick.snapshots)
 
 
 class Recorder:
@@ -37,15 +41,17 @@ class Recorder:
         clock: Clock | None = None,
         *,
         max_settlement_checks: int = 20,
+        process: str | None = PROCESS,
     ) -> None:
         self._source = source
         self._store = store
-        self._series = list(series)
+        self.series = list(series)  # public: `nem run` updates it when configs reload
+        self._process = process  # None when embedded in another process (no heartbeat)
         self._clock = clock or SystemClock()
         self._max_settlement_checks = max_settlement_checks
 
     def step(self) -> StepResult:
-        tick = self._source.poll(self._series)
+        tick = self._source.poll(self.series)
         self._store.insert_snapshots(tick.snapshots)
         settled = 0
         now = self._clock.now()
@@ -54,8 +60,9 @@ class Recorder:
             if settlement is not None:
                 self._store.record_settlement(settlement)
                 settled += 1
-        self._store.heartbeat(now, PROCESS, "ok")
-        return StepResult(len(tick.snapshots), settled)
+        if self._process:
+            self._store.heartbeat(now, self._process, "ok")
+        return StepResult(tick, settled)
 
     def run(
         self,
@@ -72,7 +79,8 @@ class Recorder:
                 log.info("recorded %d snapshots, %d settlements", r.snapshots, r.settled)
             except (KalshiError, httpx.HTTPError) as e:
                 log.warning("poll failed: %s", e)
-                self._store.heartbeat(self._clock.now(), PROCESS, f"error: {e}"[:200])
+                if self._process:
+                    self._store.heartbeat(self._clock.now(), self._process, f"error: {e}"[:200])
             n += 1
             if iterations is None or n < iterations:
                 sleep(max(0.0, interval - (time.monotonic() - started)))

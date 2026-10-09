@@ -44,6 +44,7 @@ class Runner:
     ) -> None:
         self.portfolios = list(portfolios)
         self.strategies: list[StrategyRuntime] = build_strategies(self.portfolios)
+        self._fetch = fetch_feeds
         self.feeds: list[FeedRuntime] = build_feeds(self.portfolios) if fetch_feeds else []
         self.source = source
         self.store = store
@@ -92,6 +93,8 @@ class Runner:
         for rt in self.strategies:
             if rt.config.status != "active":
                 continue
+            if self.store.halted(*rt.key) is not None:
+                continue  # kill switch: no new entries; open trades still settle above
             every = rt.portfolio.check_every_for(rt.config)
             if rt.last_check is not None and now - rt.last_check < every:
                 continue
@@ -110,6 +113,25 @@ class Runner:
                     trades.append(trade)
         self.store.heartbeat(now, PROCESS, "ok")
         return trades
+
+    def reload(self, portfolios: Sequence[PortfolioConfig]) -> None:
+        """Swap in edited portfolio files without restarting. Building the new strategies
+        happens first, so an invalid edit raises and leaves the running set untouched.
+        Per-strategy state (last check, logged skips) carries over by key."""
+        strategies = build_strategies(portfolios)
+        feeds = build_feeds(portfolios) if self.feeds or any(p.feeds for p in portfolios) else []
+        for rt in strategies:
+            old = self._by_key.get(rt.key)
+            if old is not None:
+                rt.last_check, rt.logged = old.last_check, old.logged
+        old_feeds = {f.spec.name: f for f in self.feeds}
+        for fr in feeds:
+            if fr.spec.name in old_feeds:
+                fr.last_fetch = old_feeds[fr.spec.name].last_fetch
+        self.portfolios = list(portfolios)
+        self.strategies = strategies
+        self.feeds = feeds if self._fetch else []
+        self._by_key = {rt.key: rt for rt in strategies}
 
     def run(self, ticks: Iterable[Tick]) -> None:
         """Process ticks until the source ends (replay) or forever (live). With a manual

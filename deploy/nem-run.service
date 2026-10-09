@@ -1,0 +1,26 @@
+[Unit]
+Description=NotEnoughMarkets: paper trading + market recording (all portfolios)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nem
+WorkingDirectory=/home/nem/not-enough-markets
+EnvironmentFile=-/etc/nem/nem.env
+Environment=PYTHONUNBUFFERED=1
+# Edit portfolio files in place: changes are picked up without a restart.
+ExecStart=/home/nem/not-enough-markets/.venv/bin/nem run --dir portfolios --db data/nem.db
+Restart=always
+RestartSec=10
+# One process runs every portfolio (~50 MB). The cap turns a leak into a logged restart
+# instead of the kernel silently killing whatever is biggest.
+MemoryMax=300M
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/nem/not-enough-markets/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

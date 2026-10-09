@@ -96,3 +96,51 @@ def test_replay_and_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     assert (csv_dir / "research" / "strategies.csv").exists()
     with Store(out_db) as store:
         assert store.last_heartbeat("reporter") is not None
+
+
+def test_run_once_records_and_trades_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nem.market.kalshi
+    from nem.store import Store
+
+    from kalshi_mock import mock_client
+
+    def offline_client(_env: str) -> nem.market.kalshi.KalshiClient:
+        return mock_client()
+
+    monkeypatch.setattr(nem.market.kalshi, "KalshiClient", offline_client)
+    d = tmp_path / "portfolios"
+    run_cli("portfolio", "new", "research", "--dir", str(d))
+    run_cli("strategy", "add", "research", "btc", "--series", "KXBTC15M", "--dir", str(d))
+    db = tmp_path / "nem.db"
+    args = ["run", "--once", "--dir", str(d), "--db", str(db), "--record-series", "KXETH15M"]
+    assert run_cli(*args) == 0
+    with Store(db) as store:
+        assert store.last_heartbeat("runner") is not None
+        assert store.last_heartbeat("recorder") is None  # embedded: no separate heartbeat
+        assert {s.series for s in store.iter_snapshots()} == {"KXBTC15M", "KXETH15M"}
+
+
+def test_status_halt_resume(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from datetime import UTC, datetime
+
+    from nem.store import Store
+
+    db = str(tmp_path / "nem.db")
+    d = str(tmp_path / "portfolios")
+    run_cli("portfolio", "new", "research", "--dir", d)
+    assert run_cli("status", "--db", db, "--dir", d) == 2  # runner never heartbeat
+    with Store(db) as store:
+        store.heartbeat(datetime.now(UTC), "runner", "ok")
+    assert run_cli("status", "--db", db, "--dir", d) == 0
+    capsys.readouterr()
+
+    assert run_cli("halt", "research", "--reason", "maintenance", "--db", db, "--dir", d) == 0
+    assert run_cli("halt", "typo", "--reason", "x", "--db", db, "--dir", d) == 0
+    assert "matches no portfolio" in capsys.readouterr().out
+    run_cli("status", "--db", db, "--dir", d)
+    assert "research  since 0s ago: maintenance" in capsys.readouterr().out
+    assert run_cli("resume", "research", "--db", db, "--dir", d) == 0
+    assert run_cli("resume", "research", "--db", db, "--dir", d) == 1
+    assert "Active halts: typo" in capsys.readouterr().out

@@ -120,3 +120,10 @@ CREATE TABLE heartbeats (
     strategy  TEXT,
     status    TEXT NOT NULL
 );
+CREATE INDEX heartbeats_process_ts ON heartbeats (process, ts);
+
+CREATE TABLE halts (                   -- kill switch; see `nem halt` / `nem resume`
+    scope   TEXT PRIMARY KEY,          -- "*", "<portfolio>" or "<portfolio>/<strategy>"
+    reason  TEXT NOT NULL,
+    ts      TEXT NOT NULL
+);

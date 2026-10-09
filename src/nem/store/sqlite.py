@@ -7,7 +7,7 @@ process can read while the runner writes.
 import json
 import sqlite3
 from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
 from types import TracebackType
@@ -28,7 +28,22 @@ from nem.core.types import (
     Trade,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# Upgrades for existing databases: MIGRATIONS[v] takes a database from v-1 to v. A fresh
+# database runs schema.sql (always the latest) instead.
+MIGRATIONS: dict[int, str] = {
+    2: """
+    CREATE TABLE halts (
+        scope   TEXT PRIMARY KEY,
+        reason  TEXT NOT NULL,
+        ts      TEXT NOT NULL
+    );
+    CREATE INDEX heartbeats_process_ts ON heartbeats (process, ts);
+    """,
+}
+
+HEARTBEAT_RETENTION = timedelta(days=2)
 
 
 class StoreError(RuntimeError):
@@ -71,8 +86,11 @@ class Store:
             return
         if version > SCHEMA_VERSION:
             raise StoreError(f"database schema v{version} is newer than code (v{SCHEMA_VERSION})")
-        schema = files("nem.store").joinpath("schema.sql").read_text()
-        self._conn.executescript(f"BEGIN; {schema} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;")
+        if version == 0:
+            script = files("nem.store").joinpath("schema.sql").read_text()
+        else:
+            script = "".join(MIGRATIONS[v] for v in range(version + 1, SCHEMA_VERSION + 1))
+        self._conn.executescript(f"BEGIN; {script} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;")
 
     def close(self) -> None:
         self._conn.close()
@@ -500,10 +518,62 @@ class Store:
                 " VALUES (?,?,?,?,?)",
                 (_ts(ts), process, portfolio, strategy, status),
             )
+            # one row every few seconds adds up; keep a couple of days for `nem status`
+            self._conn.execute(
+                "DELETE FROM heartbeats WHERE process = ? AND ts < ?",
+                (process, _ts(ts - HEARTBEAT_RETENTION)),
+            )
 
     def last_heartbeat(self, process: str) -> datetime | None:
         row = self._conn.execute(
             "SELECT MAX(ts) FROM heartbeats WHERE process = ?", (process,)
+        ).fetchone()
+        return None if row[0] is None else _dt(row[0])
+
+    def heartbeat_status(self, process: str) -> tuple[datetime, str] | None:
+        """(time, status) of the latest heartbeat, e.g. to show the last error."""
+        row = self._conn.execute(
+            "SELECT ts, status FROM heartbeats WHERE process = ? ORDER BY ts DESC LIMIT 1",
+            (process,),
+        ).fetchone()
+        return None if row is None else (_dt(row[0]), row[1])
+
+    def processes(self) -> list[str]:
+        return [r[0] for r in self._conn.execute("SELECT DISTINCT process FROM heartbeats")]
+
+    # --- halts (kill switch) ------------------------------------------------------
+
+    def halt(self, scope: str, reason: str, ts: datetime) -> None:
+        """Stop new entries. Scope: "*" (everything), "portfolio" or "portfolio/strategy"."""
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO halts (scope, reason, ts) VALUES (?,?,?)"
+                " ON CONFLICT (scope) DO UPDATE SET reason = excluded.reason, ts = excluded.ts",
+                (scope, reason, _ts(ts)),
+            )
+
+    def resume(self, scope: str) -> bool:
+        with self._conn:
+            cur = self._conn.execute("DELETE FROM halts WHERE scope = ?", (scope,))
+        return cur.rowcount == 1
+
+    def halts(self) -> list[tuple[str, str, datetime]]:
+        rows = self._conn.execute("SELECT scope, reason, ts FROM halts ORDER BY scope")
+        return [(r[0], r[1], _dt(r[2])) for r in rows]
+
+    def halted(self, portfolio: str, strategy: str) -> str | None:
+        """The scope that halts this strategy, if any (most general first)."""
+        scopes = ("*", portfolio, f"{portfolio}/{strategy}")
+        row = self._conn.execute(
+            "SELECT scope FROM halts WHERE scope IN (?,?,?) ORDER BY length(scope) LIMIT 1",
+            scopes,
+        ).fetchone()
+        return None if row is None else row[0]
+
+    def last_signal(self, portfolio: str, strategy: str) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT MAX(ts) FROM signals WHERE portfolio = ? AND strategy = ?",
+            (portfolio, strategy),
         ).fetchone()
         return None if row[0] is None else _dt(row[0])
 

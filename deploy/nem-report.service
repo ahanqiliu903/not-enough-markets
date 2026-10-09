@@ -1,0 +1,24 @@
+[Unit]
+Description=NotEnoughMarkets: publish reports (CSV / Google Sheets) every 5 minutes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nem
+WorkingDirectory=/home/nem/not-enough-markets
+EnvironmentFile=-/etc/nem/nem.env
+Environment=PYTHONUNBUFFERED=1
+# Separate from nem-run on purpose: reports keep flowing whatever the trading process does.
+ExecStart=/home/nem/not-enough-markets/.venv/bin/nem report --dir portfolios --db data/nem.db --every 5m
+Restart=always
+RestartSec=30
+MemoryMax=200M
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/nem/not-enough-markets/data /home/nem/not-enough-markets/out
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -61,6 +61,26 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
     run.add_argument("--depth", type=int, default=10, help="orderbook levels for fills")
     run.add_argument("--once", action="store_true", help="one tick, then exit")
+    run.add_argument(
+        "--record-series", action="append", help="also record this series (repeatable)"
+    )
+
+    st = with_dir(sub.add_parser("status", help="process health, halts, strategy activity"))
+    st.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
+    st.add_argument(
+        "--expect", default="runner", help="processes that should be up (comma-separated)"
+    )
+    st.add_argument("--max-age", default="2m", help="heartbeat older than this = stale")
+
+    for name, help_text in (
+        ("halt", "kill switch: stop new entries (all, a portfolio, or portfolio/strategy)"),
+        ("resume", "undo a halt"),
+    ):
+        h = with_dir(sub.add_parser(name, help=help_text))
+        h.add_argument("scope", nargs="?", default="*", help='"*" (default), NAME or NAME/STRATEGY')
+        h.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
+        if name == "halt":
+            h.add_argument("--reason", required=True, help="why (shown by `nem status`)")
 
     rep = with_dir(sub.add_parser("replay", help="run portfolios over recorded data"))
     rep.add_argument("--data", type=Path, required=True, help="database recorded by `nem record`")
@@ -174,31 +194,113 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _config_signature(directory: Path) -> tuple[tuple[str, float], ...]:
+    return tuple((p.name, p.stat().st_mtime) for p in sorted(directory.glob("*.yaml")))
+
+
 def cmd_run(args: argparse.Namespace) -> int:
+    """Paper-trade every portfolio. Also records every snapshot and result it sees (plus
+    any `--record-series`), so one process does it all and the data can be replayed."""
     from nem.core.clock import SystemClock
+    from nem.core.config import ConfigError, load_portfolios
     from nem.engine.runner import Runner, run_live
+    from nem.engine.runtime import BuildError
     from nem.market.kalshi import KalshiClient
-    from nem.market.source import KalshiSource
+    from nem.market.recorder import Recorder
+    from nem.market.source import KalshiSource, ReplaySource, Tick
     from nem.store import Store
 
-    portfolios = _load(args.dir)
+    directory: Path = args.dir
+    portfolios = _load(directory)
     db: Path = args.db
     db.parent.mkdir(parents=True, exist_ok=True)
     clock = SystemClock()
     client = KalshiClient("prod")  # market data is always real; orders are paper
+    extra: list[str] = args.record_series or []
     with Store(db) as store:
         source = KalshiSource(client, clock, depth=args.depth)
-        runner = Runner(portfolios, source, store, clock)
+        # the embedded recorder stores results, so settlement reads them from the store
+        runner = Runner(portfolios, ReplaySource(store), store, clock)
+        recorder = Recorder(source, store, runner.series, clock, process=None)
         intervals = [p.check_every_for(s) for p in portfolios for s in p.strategies]
         interval = max(1.0, min(intervals, default=timedelta(seconds=5)).total_seconds())
-        series = runner.series
-        log.info("paper trading %s every %.0fs; Ctrl-C to stop", ", ".join(series), interval)
+        signature = _config_signature(directory)
+
+        def poll() -> Tick:
+            nonlocal signature
+            current = _config_signature(directory)
+            if current != signature:
+                signature = current
+                try:
+                    runner.reload(load_portfolios(directory))
+                    log.info("reloaded portfolios: trading %s", ", ".join(runner.series))
+                except (ConfigError, BuildError) as e:
+                    log.error("portfolio edit rejected, still running the old config: %s", e)
+            recorder.series = sorted({*runner.series, *extra})
+            return recorder.step().tick
+
+        log.info(
+            "paper trading %s every %.0fs (recording %s); Ctrl-C to stop",
+            ", ".join(runner.series) or "nothing", interval,
+            ", ".join(sorted({*runner.series, *extra})) or "nothing",
+        )  # fmt: skip
         try:
-            run_live(runner, lambda: source.poll(series), interval, 1 if args.once else None)
+            run_live(runner, poll, interval, 1 if args.once else None)
         except KeyboardInterrupt:
             pass
         finally:
             client.close()
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    from nem.core.config import load_portfolios, parse_duration
+    from nem.ops import render_status
+    from nem.store import Store
+
+    portfolios = load_portfolios(args.dir) if args.dir.is_dir() else []
+    expect = [x for x in args.expect.split(",") if x]
+    with Store(args.db) as store:
+        text, healthy = render_status(
+            store, portfolios, datetime.now(UTC), expect, parse_duration(args.max_age)
+        )
+    print(text)
+    return 0 if healthy else 2
+
+
+def _check_scope(scope: str, directory: Path) -> None:
+    """Warn (don't fail) if a halt scope names nothing in the portfolio files."""
+    from nem.core.config import load_portfolios
+
+    if scope == "*" or not directory.is_dir():
+        return
+    known = {p.name for p in load_portfolios(directory)} | {
+        f"{p.name}/{s.name}" for p in load_portfolios(directory) for s in p.strategies
+    }
+    if scope not in known:
+        print(f"warning: {scope!r} matches no portfolio or strategy in {directory}/")
+
+
+def cmd_halt(args: argparse.Namespace) -> int:
+    from nem.store import Store
+
+    _check_scope(args.scope, args.dir)
+    with Store(args.db) as store:
+        store.halt(args.scope, args.reason, datetime.now(UTC))
+    what = "everything" if args.scope == "*" else args.scope
+    print(f"Halted {what}: no new entries. Open positions still settle. Undo: nem resume")
+    return 0
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    from nem.store import Store
+
+    with Store(args.db) as store:
+        if not store.resume(args.scope):
+            active = ", ".join(scope for scope, _, _ in store.halts()) or "none"
+            print(f"No halt on {args.scope!r}. Active halts: {active}")
+            return 1
+    print(f"Resumed {'everything' if args.scope == '*' else args.scope}")
     return 0
 
 
@@ -341,6 +443,9 @@ COMMANDS = {
     "replay": cmd_replay,
     "summary": cmd_summary,
     "report": cmd_report,
+    "status": cmd_status,
+    "halt": cmd_halt,
+    "resume": cmd_resume,
     "demo": cmd_demo,
     "export": cmd_export,
     "record": cmd_record,

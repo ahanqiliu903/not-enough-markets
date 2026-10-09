@@ -125,7 +125,7 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 | ✅ | **M2 Market data** | Kalshi read client and auth, `nem record` to collect market snapshots and settlements, replay from recorded data |
 | ✅ | **M3 Paper trading** | The trading loop; plugin interfaces for signals, gates, sizing, risk and feeds; paper broker with Kalshi fees, realistic fills and interest accrual; `extreme_favorite`, `max_entry_price`, `time_in_window`, `fixed` / `percent` / `kelly` sizing; `nem init` / `nem portfolio` / `nem strategy` commands; `make demo` |
 | ✅ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
-| ⬜ | **M5 24/7 operation** | systemd service, heartbeats, `nem status` / `nem halt` / `nem resume` |
+| ✅ | **M5 24/7 operation** | systemd services and runbook, one process for trading + recording, config hot-reload, `nem status` / `nem halt` / `nem resume` |
 | ⬜ | **M6 External feeds** | First real feeds (crypto spot price, weather forecast) with recording, and example feed-based gates |
 | ⬜ | **M7 Backtest & suggested settings** | Replay recorded market and feed data through the same loop to filter out losers; parameter sweeps with held-out validation to suggest starting settings for paper trading |
 | ⬜ | **M8 Live trading** | Live broker on Kalshi (demo first), risk manager, budgets across live portfolios |
@@ -148,9 +148,11 @@ Paper-trade your own idea:
 uv run nem init                                          # first portfolio (asks name + balance)
 uv run nem strategy add paper fav90 --series KXBTC15M    # appends a template; edit it in portfolios/paper.yaml
 uv run nem validate                                      # checks every file and plugin
-uv run nem run                                           # paper-trade on live Kalshi prices (Ctrl-C stops)
+uv run nem run                                           # paper-trade on live Kalshi prices, recording as it goes
 uv run nem summary                                       # statistics per strategy (see below)
 ```
+
+Keep it running on a server: see [Running 24/7](#running-247).
 
 More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
 
@@ -198,7 +200,7 @@ Google Sheets setup: `uv sync --extra sheets`, create a Google Cloud service acc
 
 ## Recording market data
 
-Recording takes calendar time, so start it early (ideally 24/7 on a VPS). No Kalshi account needed: public market data doesn't require an API key.
+`nem run` already records every market its strategies trade. Use `nem record` (or `nem run --record-series`) to collect data for series you aren't trading yet. Recording takes calendar time, so start early. No Kalshi account needed: public market data doesn't require an API key.
 
 ```bash
 uv run nem record --series KXBTC15M --series KXETH15M        # poll every 5s, forever
@@ -207,6 +209,18 @@ uv run nem record --series KXBTC15M --once                    # single poll, the
 ```
 
 Each poll stores every open market's top of book and orderbook depth to `data/nem.db` (SQLite). Once a market closes, the recorder fetches its result, so recorded data can later be replayed and settled. Network errors are logged and retried on the next poll.
+
+## Running 24/7
+
+[deploy/RUNBOOK.md](deploy/RUNBOOK.md) sets up a small Linux server (e.g. the cheapest DigitalOcean droplet) with two systemd services: `nem-run` (paper trading + recording, all portfolios in one ~50 MB process) and `nem-report` (reports every 5 minutes).
+
+```bash
+nem status                                      # process health, halts, per-strategy activity
+nem halt research/fav90 --reason "check fills"  # kill switch: everything, a portfolio, or one strategy
+nem resume research/fav90
+```
+
+Edit portfolio files while it runs: changes are picked up on the next tick, and an invalid edit is rejected while the old config keeps running.
 
 ## Development
 

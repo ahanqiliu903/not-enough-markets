@@ -76,3 +76,12 @@ def test_run_survives_network_errors() -> None:
     recorder.run(interval=5, iterations=2, sleep=sleeps.append)
     assert len(list(store.iter_snapshots())) == 1  # second poll worked
     assert len(sleeps) == 1  # no sleep after the last iteration
+
+
+def test_embedded_recorder_skips_heartbeat_and_returns_tick() -> None:
+    clock, store = ManualClock(DURING), Store()
+    rec = Recorder(KalshiSource(mock_client(), clock), store, ["KXBTC15M"], clock, process=None)
+    result = rec.step()
+    assert result.tick.ts == DURING
+    assert result.snapshots == 1
+    assert store.last_heartbeat("recorder") is None
