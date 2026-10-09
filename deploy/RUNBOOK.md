@@ -34,7 +34,7 @@ sudo -iu nem
 git clone https://github.com/ahanqiliu903/not-enough-markets.git
 cd not-enough-markets
 curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.local/bin/env
-uv sync --frozen --no-dev            # add --extra sheets for Google Sheets
+uv sync --frozen --no-dev --extra sheets   # drop --extra sheets if you don't use Google Sheets
 mkdir -p data out portfolios
 uv run nem init                      # or copy your portfolio files into portfolios/
 uv run nem validate
@@ -49,6 +49,29 @@ cp /home/nem/not-enough-markets/deploy/nem-*.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now nem-run nem-report
 ```
+
+## Google Sheets reports (optional)
+
+1. In the [Google Cloud console](https://console.cloud.google.com/): create a project, enable
+   the **Google Sheets API**, create a **service account**, and download a **JSON key** for it.
+2. Create a Google Sheet and **share it with the service account's email** (Editor). The
+   sheet ID is the long string in its URL: `docs.google.com/spreadsheets/d/<SHEET_ID>/edit`.
+3. Put the key on the server and point the env file at it:
+   ```bash
+   # from your laptop
+   scp key.json root@<server>:/etc/nem/sheets.json
+   # on the server, as root
+   chown root:nem /etc/nem/sheets.json && chmod 640 /etc/nem/sheets.json
+   printf 'SHEETS_CREDENTIALS=/etc/nem/sheets.json\nSHEET_ID=<SHEET_ID>\n' >> /etc/nem/nem.env
+   ```
+4. Add a reporter to each portfolio file: `reporting: [{type: sheets}]`.
+5. Test once by hand, then restart the service:
+   ```bash
+   sudo -u nem bash -c 'set -a; . /etc/nem/nem.env; cd ~/not-enough-markets && .venv/bin/nem report'
+   systemctl restart nem-report
+   ```
+   Each portfolio gets three tabs: `<portfolio> summary`, `<portfolio> strategies`,
+   `<portfolio> trades`.
 
 ## Day to day
 

@@ -137,9 +137,10 @@ Later: exits before settlement, deeper agent tooling (hypothesis in plain Englis
 
 ## Quickstart
 
-No Kalshi account needed for any of this.
+No Kalshi account needed for any of this. You need `git`, `make` and [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`); uv installs the right Python by itself.
 
 ```bash
+git clone https://github.com/ahanqiliu903/not-enough-markets.git && cd not-enough-markets
 make setup                 # install dependencies
 make demo                  # replay ~2h of bundled BTC/ETH data through examples/portfolios/
 ```
