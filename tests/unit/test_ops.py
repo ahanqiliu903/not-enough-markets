@@ -13,7 +13,7 @@ from nem.store import Store
 from nem.store.sqlite import SCHEMA_VERSION
 
 from engine_helpers import portfolio, settle, strategy, ticks, window
-from factories import make_trade
+from factories import make_snapshot, make_trade
 
 NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
 OPEN = datetime(2026, 10, 7, 19, 0, tzinfo=UTC)
@@ -28,13 +28,19 @@ def test_v1_database_is_migrated(tmp_path: Path) -> None:
         s.heartbeat(NOW, "runner", "ok")
     conn = sqlite3.connect(db)  # turn it back into a v1 database
     conn.executescript(
-        "DROP TABLE halts; DROP INDEX heartbeats_process_ts; PRAGMA user_version = 1;"
+        "DROP TABLE halts; DROP INDEX heartbeats_process_ts;"  # v2
+        " ALTER TABLE snapshots DROP COLUMN strike_type;"  # v3
+        " ALTER TABLE snapshots DROP COLUMN floor_strike;"
+        " ALTER TABLE snapshots DROP COLUMN cap_strike;"
+        " PRAGMA user_version = 1;"
     )
     conn.close()
     with Store(db) as s:
         assert s.last_heartbeat("runner") == NOW  # data kept
         s.halt("*", "after migration", NOW)
         assert s.halted("p", "s") == "*"
+        s.insert_snapshot(make_snapshot(floor_strike=81780.54, strike_type="greater_or_equal"))
+        assert next(s.iter_snapshots()).floor_strike == 81780.54
     assert sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
 
 

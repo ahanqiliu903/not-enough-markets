@@ -53,6 +53,9 @@ def to_snapshot(
         yes_ask=m.yes_ask,
         no_bid=m.no_bid,
         no_ask=m.no_ask,
+        strike_type=m.strike_type,
+        floor_strike=m.floor_strike,
+        cap_strike=m.cap_strike,
     )
     if book is None:
         return snap

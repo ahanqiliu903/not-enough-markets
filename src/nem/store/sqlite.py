@@ -28,7 +28,7 @@ from nem.core.types import (
     Trade,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Upgrades for existing databases: MIGRATIONS[v] takes a database from v-1 to v. A fresh
 # database runs schema.sql (always the latest) instead.
@@ -40,6 +40,11 @@ MIGRATIONS: dict[int, str] = {
         ts      TEXT NOT NULL
     );
     CREATE INDEX heartbeats_process_ts ON heartbeats (process, ts);
+    """,
+    3: """
+    ALTER TABLE snapshots ADD COLUMN strike_type TEXT;
+    ALTER TABLE snapshots ADD COLUMN floor_strike REAL;
+    ALTER TABLE snapshots ADD COLUMN cap_strike REAL;
     """,
 }
 
@@ -116,7 +121,8 @@ class Store:
         with self._conn:
             self._conn.executemany(
                 "INSERT INTO snapshots (ts, series, window_id, ticker, open_time, close_time,"
-                " yes_bid, yes_ask, no_bid, no_ask, depth_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                " yes_bid, yes_ask, no_bid, no_ask, depth_json, strike_type, floor_strike,"
+                " cap_strike) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [
                     (
                         _ts(snap.ts),
@@ -132,6 +138,9 @@ class Store:
                         json.dumps(
                             {side: [list(lv) for lv in lvs] for side, lvs in snap.depth.items()}
                         ),
+                        snap.strike_type,
+                        snap.floor_strike,
+                        snap.cap_strike,
                     )
                     for snap in snaps
                 ],
@@ -171,6 +180,9 @@ class Store:
                 no_bid=r["no_bid"],
                 no_ask=r["no_ask"],
                 depth=_depth_from_json(r["depth_json"]),
+                strike_type=r["strike_type"],
+                floor_strike=r["floor_strike"],
+                cap_strike=r["cap_strike"],
             )
 
     # --- settlements --------------------------------------------------------

@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 EXCHANGE_TZ = ZoneInfo("America/New_York")
 
-_MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 _CODE_RE = re.compile(r"^(\d{2})([A-Z]{3})(\d{2})(\d{2})(\d{2})$")
 
 
@@ -55,11 +55,11 @@ def split_window_id(window_id: str) -> tuple[str, str]:
 
 def window_code_to_datetime(code: str) -> datetime:
     m = _CODE_RE.match(code)
-    if not m or m.group(2) not in _MONTHS:
+    if not m or m.group(2) not in MONTHS:
         raise ValueError(f"not a window code: {code!r}")
     yy, mon, dd, hh, mm = m.groups()
     return datetime(
-        2000 + int(yy), _MONTHS.index(mon) + 1, int(dd), int(hh), int(mm), tzinfo=EXCHANGE_TZ
+        2000 + int(yy), MONTHS.index(mon) + 1, int(dd), int(hh), int(mm), tzinfo=EXCHANGE_TZ
     )
 
 
@@ -67,7 +67,7 @@ def datetime_to_window_code(dt: datetime) -> str:
     if dt.tzinfo is None:
         raise ValueError("dt must be timezone-aware")
     t = dt.astimezone(EXCHANGE_TZ)
-    return f"{t:%y}{_MONTHS[t.month - 1]}{t:%d%H%M}"
+    return f"{t:%y}{MONTHS[t.month - 1]}{t:%d%H%M}"
 
 
 def shift_window_code(code: str, n: int, minutes: int = 15) -> str:

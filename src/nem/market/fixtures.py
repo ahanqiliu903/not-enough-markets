@@ -28,6 +28,9 @@ def _snapshot_row(s: MarketSnapshot) -> dict[str, Any]:
         "no_bid": s.no_bid,
         "no_ask": s.no_ask,
         "depth": {side: [list(lv) for lv in levels] for side, levels in s.depth.items()},
+        "strike_type": s.strike_type,
+        "floor_strike": s.floor_strike,
+        "cap_strike": s.cap_strike,
     }
 
 
@@ -87,6 +90,9 @@ def import_fixture(path: Path, store: Store) -> int:
                         side: [(float(p), float(q)) for p, q in levels]
                         for side, levels in row["depth"].items()
                     },
+                    strike_type=row.get("strike_type"),
+                    floor_strike=row.get("floor_strike"),
+                    cap_strike=row.get("cap_strike"),
                 )
             )
     store.insert_snapshots(snaps)

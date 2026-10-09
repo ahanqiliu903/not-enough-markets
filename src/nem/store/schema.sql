@@ -14,7 +14,10 @@ CREATE TABLE snapshots (               -- powers replay and backtests
     yes_ask     REAL,
     no_bid      REAL,
     no_ask      REAL,
-    depth_json  TEXT NOT NULL DEFAULT '{}'
+    depth_json  TEXT NOT NULL DEFAULT '{}',
+    strike_type  TEXT,                 -- what YES means, e.g. greater_or_equal / between
+    floor_strike REAL,
+    cap_strike   REAL
 );
 CREATE INDEX snapshots_series_ts ON snapshots (series, ts);
 CREATE INDEX snapshots_ticker ON snapshots (ticker);

@@ -14,7 +14,7 @@ A template for Kalshi algorithmic trading.
 > It is meant to be an all-in-one home for automated prediction market trading.
 
 > [!NOTE]
-> **Work in progress.** You can record live Kalshi data, paper-trade on it, and get statistics and CSV/Google Sheets reports today. Live trading and external feeds are still to come. See [Roadmap](#roadmap).
+> **Beta.** You can record live Kalshi data, paper-trade on it with external feeds, get statistics and CSV/Google Sheets reports, and run it 24/7 on a server today. Live trading is still to come. See [Roadmap](#roadmap).
 
 ## What is this for?
 
@@ -54,8 +54,10 @@ Strategies can be `active`, `paused` or `retired`. Retired ones keep their histo
 - **Feeds** (external data): anything a market depends on besides its own prices, e.g. a crypto spot price, a commodity price, or a temperature forecast. Every market targets something different, so feeds are plugins too: write one small class per data source and any signal or gate can use it by name.
   - Feed values are **recorded with timestamps**, like market data, so replay sees only what was known at the time. Forecasts also record when they were **issued**, so a backtest can't use a forecast published after the trade.
   - Each feed has a `max_age`. Older data counts as unavailable, and each gate declares whether it then lets trades through or blocks them.
+  - Built in: `coinbase_spot` (crypto spot price) and `nws_forecast` (US daily high/low and precipitation chance from the National Weather Service). Gates that use them: `feed_agrees` (the feed value is on the bet's side of the market's strike, with a margin) and `feed_threshold` (veto outside a range, e.g. precipitation over 60%). See [examples/feeds/](examples/feeds/feeds_example.yaml).
+  - Feeds are predictors, not settlement sources. Kalshi decides every outcome; check each market's rules for what it actually settles on (e.g. temperature markets settle on The Weather Company, not NWS).
 
-Example portfolio file *(`coinbase_spot` and `spot_agrees` are examples of feed plugins planned for M6; everything else works today)*:
+Example portfolio file:
 
 ```yaml
 name: btc_research
@@ -83,7 +85,7 @@ strategies:
     check_every: 2m                # per-strategy override
     signal: {type: extreme_favorite, threshold: 0.85, min_edge: 0.015}
     gates:
-      - {type: spot_agrees, feed: btc_spot}   # veto if spot has moved against the favorite
+      - {type: feed_agrees, feed: btc_spot, margin_pct: 0.05}   # veto unless spot is already on the bet's side of the target price
     sizing: {type: kelly, fraction: 0.25, max_contracts: 10}
 ```
 
@@ -126,7 +128,7 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 | ✅ | **M3 Paper trading** | The trading loop; plugin interfaces for signals, gates, sizing, risk and feeds; paper broker with Kalshi fees, realistic fills and interest accrual; `extreme_favorite`, `max_entry_price`, `time_in_window`, `fixed` / `percent` / `kelly` sizing; `nem init` / `nem portfolio` / `nem strategy` commands; `make demo` |
 | ✅ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
 | ✅ | **M5 24/7 operation** | systemd services and runbook, one process for trading + recording, config hot-reload, `nem status` / `nem halt` / `nem resume` |
-| ⬜ | **M6 External feeds** | First real feeds (crypto spot price, weather forecast) with recording, and example feed-based gates |
+| ✅ | **M6 External feeds** | Coinbase spot and NWS forecast feeds, recorded by `known_at`; market strikes recorded with snapshots; `feed_agrees` and `feed_threshold` gates |
 | ⬜ | **M7 Backtest & suggested settings** | Replay recorded market and feed data through the same loop to filter out losers; parameter sweeps with held-out validation to suggest starting settings for paper trading |
 | ⬜ | **M8 Live trading** | Live broker on Kalshi (demo first), risk manager, budgets across live portfolios |
 | ⬜ | **M9 Docs** | Lessons from running live, "write a signal / feed" guides, a worked case study |

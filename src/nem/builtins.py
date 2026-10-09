@@ -3,6 +3,9 @@
 import importlib
 
 BUILTIN_MODULES = (
+    "nem.feeds.coinbase",
+    "nem.feeds.nws",
+    "nem.gates.feeds",
     "nem.gates.max_entry_price",
     "nem.gates.time_in_window",
     "nem.reporting.csv_reporter",

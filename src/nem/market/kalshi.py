@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import httpx
 
-from nem.core.types import Depth, Level, Side
+from nem.core.types import Depth, Level, Side, StrikeType
 from nem.market.auth import Signer
 
 Env = Literal["prod", "demo"]
@@ -45,6 +45,9 @@ class KalshiMarket:
     no_ask: float | None
     result: Side | None  # None until determined
     settled_at: datetime | None
+    strike_type: StrikeType | None = None
+    floor_strike: float | None = None
+    cap_strike: float | None = None
 
 
 def _price(s: str | None) -> float | None:
@@ -59,6 +62,13 @@ def _bid(s: str | None) -> float | None:
 def _ask(s: str | None) -> float | None:
     p = _price(s)
     return None if p is None or p >= 1 else p
+
+
+STRIKE_TYPES = ("greater", "greater_or_equal", "less", "less_or_equal", "between")
+
+
+def _number(v: object) -> float | None:
+    return float(v) if isinstance(v, int | float | str) and v != "" else None
 
 
 def _time(s: str) -> datetime:
@@ -80,6 +90,9 @@ def parse_market(m: dict[str, Any]) -> KalshiMarket:
         no_ask=_ask(m.get("no_ask_dollars")),
         result=result if result in ("yes", "no") else None,
         settled_at=_time(settlement_ts) if settlement_ts else None,
+        strike_type=m.get("strike_type") if m.get("strike_type") in STRIKE_TYPES else None,
+        floor_strike=_number(m.get("floor_strike")),
+        cap_strike=_number(m.get("cap_strike")),
     )
 
 

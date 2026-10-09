@@ -1,0 +1,52 @@
+# Example paper portfolio using external feeds. Copy it into portfolios/ to run it live
+# (`nem run`): feeds are fetched while running and recorded with the time each value became
+# known, so replays later see exactly what was known at each decision.
+name: feeds_example
+mode: paper
+starting_balance: 1000
+check_every: 5s
+
+feeds:
+  # BTC spot from Coinbase (a proxy for the CF Benchmarks index Kalshi settles on)
+  - {name: btc_spot, type: coinbase_spot, product: BTC-USD, every: 5s, max_age: 30s}
+  # NWS forecast for Central Park (KXHIGHNY settles on The Weather Company's CLINYC
+  # reading; NWS is a free forecast for the same spot, not the settlement source)
+  - name: nyc
+    type: nws_forecast
+    lat: 40.7789
+    lon: -73.9692
+    user_agent: "nem paper trading (you@example.com)"   # NWS asks for contact info
+    every: 30m
+    max_age: 12h
+
+strategies:
+  # BTC 15-minute up/down: buy the 90c+ favorite only if spot is already at least 0.05%
+  # on the right side of the target price.
+  - name: btc_fav_spot
+    series: KXBTC15M
+    signal:
+      type: extreme_favorite
+      threshold: 0.90
+      min_edge: 0.01
+      priors: {yes: {wins: 93, n: 100}, no: {wins: 93, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.95}
+      - {type: feed_agrees, feed: btc_spot, margin_pct: 0.05}   # fails closed if spot is stale
+    sizing: {type: fixed, contracts: 5}
+
+  # NYC daily high: buy the favorite bracket only if the forecast high sits inside its side
+  # with 2F to spare, and skip rainy days (forecasts are less reliable).
+  - name: nyc_high_fav
+    series: KXHIGHNY
+    check_every: 5m
+    signal:
+      type: extreme_favorite
+      threshold: 0.85
+      min_edge: 0.01
+      priors: {yes: {wins: 90, n: 100}, no: {wins: 90, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.95}
+      - {type: feed_agrees, feed: nyc, key: "{date}/high", margin: 2}
+      - {type: feed_threshold, feed: nyc, key: "{date}/precip", max: 60}
+    sizing: {type: fixed, contracts: 5}
+    risk: {max_open_positions: 1}

@@ -12,6 +12,7 @@ from typing import Literal
 Side = Literal["yes", "no"]
 Mode = Literal["paper", "live"]
 DecisionKind = Literal["take", "skip", "no_fill"]
+StrikeType = Literal["greater", "greater_or_equal", "less", "less_or_equal", "between"]
 StrategyKey = tuple[str, str]  # (portfolio, strategy)
 
 Level = tuple[float, float]  # (price, contracts); Kalshi sizes can be fractional
@@ -43,6 +44,11 @@ class MarketSnapshot:
     no_bid: float | None
     no_ask: float | None
     depth: Depth = field(default_factory=dict[Side, Sequence[Level]])
+    # What YES means, as Kalshi defines it: e.g. "greater_or_equal" 81780.54 (BTC ends at or
+    # above the target price) or "between" 75..76 (the high is 75-76F). None if unknown.
+    strike_type: StrikeType | None = None
+    floor_strike: float | None = None
+    cap_strike: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("ts", "open_time", "close_time"):
@@ -51,6 +57,24 @@ class MarketSnapshot:
             raise ValueError("close_time must be after open_time")
         for name in ("yes_bid", "yes_ask", "no_bid", "no_ask"):
             _require_price(name, getattr(self, name))
+
+    def resolves_yes(self, value: float) -> bool | None:
+        """Would the market resolve YES if the underlying ended at `value`? None if the
+        strike is unknown or the strike type isn't one we understand."""
+        lo, hi = self.floor_strike, self.cap_strike
+        match self.strike_type:
+            case "greater" if lo is not None:
+                return value > lo
+            case "greater_or_equal" if lo is not None:
+                return value >= lo
+            case "less" if hi is not None:
+                return value < hi
+            case "less_or_equal" if hi is not None:
+                return value <= hi
+            case "between" if lo is not None and hi is not None:
+                return lo <= value <= hi
+            case _:
+                return None
 
 
 @dataclass(frozen=True, slots=True)
