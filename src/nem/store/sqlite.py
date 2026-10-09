@@ -390,6 +390,24 @@ class Store:
             args.append(limit)
         return [_trade(r) for r in reversed(self._conn.execute(sql, args).fetchall())]
 
+    def p_models(self, portfolio: str, strategy: str) -> dict[str, float]:
+        """window_id -> the p_model of the signal that opened that trade (for calibration)."""
+        rows = self._conn.execute(
+            "SELECT window_id, p_model FROM signals WHERE portfolio = ? AND strategy = ?"
+            " AND decision = 'take' ORDER BY ts",
+            (portfolio, strategy),
+        )
+        return {r[0]: r[1] for r in rows}
+
+    def first_activity(self, portfolio: str) -> datetime | None:
+        """Earliest trade or ledger entry, i.e. roughly when the portfolio started."""
+        row = self._conn.execute(
+            "SELECT MIN(t) FROM (SELECT MIN(opened_at) AS t FROM trades WHERE portfolio = ?"
+            " UNION ALL SELECT MIN(ts) FROM ledger WHERE portfolio = ?)",
+            (portfolio, portfolio),
+        ).fetchone()
+        return None if row[0] is None else _dt(row[0])
+
     # --- ledger (interest and other non-trade cash) -----------------------------
 
     def add_ledger(self, portfolio: str, ts: datetime, kind: str, amount: float) -> bool:

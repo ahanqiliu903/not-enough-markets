@@ -81,7 +81,18 @@ def test_replay_and_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     capsys.readouterr()
     assert run_cli("replay", "--data", str(data), "--out", str(out_db), "--dir", d) == 0
     out = capsys.readouterr().out
-    assert "btc" in out
-    assert "      1    1   100.0" in out  # 1 trade, 1 win
+    assert "btc  KXBTC15M  active  1 trades (1 won)" in out
     assert run_cli("summary", "--db", str(out_db), "--dir", d) == 0
     assert "Portfolio research (paper)" in capsys.readouterr().out
+
+    # report publishes to the portfolio's reporters (csv here)
+    yaml_path = tmp_path / "portfolios" / "research.yaml"
+    csv_dir = tmp_path / "out"
+    text = yaml_path.read_text().replace(
+        "feeds: []", f"feeds: []\nreporting: [{{type: csv, path: '{csv_dir}'}}]"
+    )
+    yaml_path.write_text(text)
+    assert run_cli("report", "--db", str(out_db), "--dir", d) == 0
+    assert (csv_dir / "research" / "strategies.csv").exists()
+    with Store(out_db) as store:
+        assert store.last_heartbeat("reporter") is not None

@@ -14,7 +14,7 @@ A template for Kalshi algorithmic trading.
 > It is meant to be an all-in-one home for automated prediction market trading.
 
 > [!NOTE]
-> **Work in progress.** You can record live Kalshi data and paper-trade on it today. Live trading, statistics and external feeds are still to come. See [Roadmap](#roadmap).
+> **Work in progress.** You can record live Kalshi data, paper-trade on it, and get statistics and CSV/Google Sheets reports today. Live trading and external feeds are still to come. See [Roadmap](#roadmap).
 
 ## What is this for?
 
@@ -124,7 +124,7 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 | ✅ | **M1 Core** | Portfolio/strategy config with validation, plugin registry, SQLite store, look-ahead-safe strategy context, Kalshi window-code math |
 | ✅ | **M2 Market data** | Kalshi read client and auth, `nem record` to collect market snapshots and settlements, replay from recorded data |
 | ✅ | **M3 Paper trading** | The trading loop; plugin interfaces for signals, gates, sizing, risk and feeds; paper broker with Kalshi fees, realistic fills and interest accrual; `extreme_favorite`, `max_entry_price`, `time_in_window`, `fixed` / `percent` / `kelly` sizing; `nem init` / `nem portfolio` / `nem strategy` commands; `make demo` |
-| ⬜ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
+| ✅ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
 | ⬜ | **M5 24/7 operation** | systemd service, heartbeats, `nem status` / `nem halt` / `nem resume` |
 | ⬜ | **M6 External feeds** | First real feeds (crypto spot price, weather forecast) with recording, and example feed-based gates |
 | ⬜ | **M7 Backtest & suggested settings** | Replay recorded market and feed data through the same loop to filter out losers; parameter sweeps with held-out validation to suggest starting settings for paper trading |
@@ -149,10 +149,52 @@ uv run nem init                                          # first portfolio (asks
 uv run nem strategy add paper fav90 --series KXBTC15M    # appends a template; edit it in portfolios/paper.yaml
 uv run nem validate                                      # checks every file and plugin
 uv run nem run                                           # paper-trade on live Kalshi prices (Ctrl-C stops)
-uv run nem summary                                       # trades, win rate vs break-even, P&L, why signals were skipped
+uv run nem summary                                       # statistics per strategy (see below)
 ```
 
 More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
+
+## Reading the statistics
+
+`nem summary` (and `make demo`) print this for every strategy:
+
+```
+  fav90_any  KXBTC15M  active  5 trades (4 won), 0 open
+    win rate    80.0% [37.6%, 96.4%]   break-even 91.2%   z -0.88 (p 0.81)
+    edge        -11.2c per contract [-53.6c, +5.2c]
+    P&L         -2.79  (-0.56/trade, ROI -12.3%)   max drawdown 4.58
+    verdict     undecided after 5 trades; ~1,152 trades to detect a 2.0c edge
+    calibration Brier 0.177  92%-94%: said 93.1%, won 80.0% (n=5)
+```
+
+- **win rate**: with a 95% confidence interval (Wilson), so a lucky streak doesn't look like skill.
+- **break-even**: every trade pays price + fees to win $1, so it breaks even at a win rate equal to its cost per contract. The question is always *win rate vs break-even*.
+- **z / p**: how surprising the wins are if the strategy has no edge (each trade winning exactly as often as its price implies).
+- **edge**: average profit per contract, with its interval.
+- **verdict**: a sequential test (SPRT) checked after every trade. It says *edge*, *no edge* or *undecided*, plus roughly how many trades it takes to detect an edge of that size. Near 90c, telling a 2c edge from none takes over a thousand trades, which is why paper trading takes patience.
+- **calibration**: does the signal's estimated win probability match reality? Brier score: lower is better.
+- Portfolios with `interest_apy` also show **P&L vs simply holding cash** at Kalshi's rate.
+
+Tune the test with `--edge 0.03`, `--alpha`, `--power`.
+
+## Reports (CSV, Google Sheets)
+
+Reporting runs as its own process, so reports keep flowing even when no strategy is running:
+
+```bash
+uv run nem report                 # print and publish once
+uv run nem report --every 5m      # keep publishing
+```
+
+Each portfolio chooses where its reports go:
+
+```yaml
+reporting:
+  - {type: csv, path: out}                       # out/<portfolio>/{summary,strategies,trades}.csv
+  - {type: sheets, sheet_id_env: SHEET_ID}       # tabs "<portfolio> summary|strategies|trades"
+```
+
+Google Sheets setup: `uv sync --extra sheets`, create a Google Cloud service account with a JSON key, share the spreadsheet with the service account's email, then set `SHEETS_CREDENTIALS=/path/to/key.json` and `SHEET_ID=<spreadsheet id>` in the environment (never in the YAML). Several portfolios can share one spreadsheet; each writes only its own tabs.
 
 ## Recording market data
 

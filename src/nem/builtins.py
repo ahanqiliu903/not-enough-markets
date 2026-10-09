@@ -5,6 +5,8 @@ import importlib
 BUILTIN_MODULES = (
     "nem.gates.max_entry_price",
     "nem.gates.time_in_window",
+    "nem.reporting.csv_reporter",
+    "nem.reporting.sheets",
     "nem.signals.extreme_favorite",
     "nem.sizing.builtin",
 )

@@ -15,8 +15,14 @@ dependencies = [
 [project.scripts]
 nem = "nem.cli:main"
 
+[project.optional-dependencies]
+sheets = [
+    "gspread>=6.2.1",
+]
+
 [dependency-groups]
 dev = [
+    "gspread>=6.2.1",
     "pre-commit>=4",
     "pyright>=1.1.400",
     "pytest>=8",

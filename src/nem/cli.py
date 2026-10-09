@@ -12,6 +12,8 @@ from nem import __version__
 
 if TYPE_CHECKING:
     from nem.core.config import PortfolioConfig
+    from nem.stats.report import PortfolioReport
+    from nem.store import Store
 
 log = logging.getLogger("nem")
 
@@ -73,8 +75,23 @@ def build_parser() -> argparse.ArgumentParser:
     exp.add_argument("--db", type=Path, default=DEFAULT_DB)
     exp.add_argument("--out", type=Path, required=True, help="e.g. sample.jsonl.gz")
 
-    summ = with_dir(sub.add_parser("summary", help="results so far"))
-    summ.add_argument("--db", type=Path, default=DEFAULT_DB)
+    def with_stats(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        p.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"default: {DEFAULT_DB}")
+        p.add_argument(
+            "--edge", type=float, default=0.02, help="edge per contract to test for (0.02 = 2c)"
+        )
+        p.add_argument("--alpha", type=float, default=0.05, help="false-positive rate")
+        p.add_argument("--power", type=float, default=0.8, help="chance of detecting the edge")
+        return p
+
+    with_stats(with_dir(sub.add_parser("summary", help="results and statistics so far")))
+    rpt = with_stats(
+        with_dir(
+            sub.add_parser("report", help="statistics, published to each portfolio's reporters")
+        )
+    )
+    rpt.add_argument("--every", help="repeat on this schedule, e.g. 5m (default: once)")
+    rpt.add_argument("--no-publish", action="store_true", help="print only")
 
     rec = sub.add_parser("record", help="record live Kalshi snapshots and settlements")
     rec.add_argument(
@@ -190,7 +207,6 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
     from nem.core.clock import ManualClock
     from nem.engine.runner import Runner
-    from nem.engine.summary import summarize
     from nem.market.source import ReplaySource
     from nem.store import Store
 
@@ -208,7 +224,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
             runner = Runner(portfolios, source, store, clock, data=data, fetch_feeds=False)
             runner.run(source.ticks(runner.series))
             runner.settle_remaining(clock.now() + timedelta(hours=1))
-            print(summarize(store, portfolios, clock.now()))
+            print(_render(store, portfolios, clock.now()))
         print(f"\nresults: {out}")
     return 0
 
@@ -236,13 +252,62 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reports(
+    store: "Store", portfolios: "list[PortfolioConfig]", now: datetime, args: argparse.Namespace
+) -> "list[PortfolioReport]":
+    from nem.stats.report import build_report
+
+    return [build_report(store, p, now, args.edge, args.alpha, args.power) for p in portfolios]
+
+
+def _render(store: "Store", portfolios: "list[PortfolioConfig]", now: datetime) -> str:
+    from nem.stats.report import build_report, render_all
+
+    return render_all([build_report(store, p, now) for p in portfolios])
+
+
 def cmd_summary(args: argparse.Namespace) -> int:
-    from nem.engine.summary import summarize
+    from nem.stats.report import render_all
     from nem.store import Store
 
     with Store(args.db) as store:
-        print(summarize(store, _load(args.dir), datetime.now(UTC)))
+        print(render_all(_reports(store, _load(args.dir), datetime.now(UTC), args)))
     return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    """Separate from the runner on purpose: reports keep flowing whatever the bots do."""
+    import time
+
+    from nem.core.config import parse_duration
+    from nem.core.registry import REGISTRY
+    from nem.reporting.base import Reporter
+    from nem.stats.report import render_all
+    from nem.store import Store
+
+    portfolios = _load(args.dir)
+    reporters = {
+        p.name: [REGISTRY.build("reporter", spec, Reporter) for spec in p.reporting]
+        for p in portfolios
+    }
+    every = parse_duration(args.every).total_seconds() if args.every else None
+    with Store(args.db) as store:
+        while True:
+            now = datetime.now(UTC)
+            reports = _reports(store, portfolios, now, args)
+            print(render_all(reports))
+            if not args.no_publish:
+                for report in reports:
+                    for reporter in reporters[report.portfolio.name]:
+                        try:
+                            log.info("published %s", reporter.publish(report))
+                        except Exception as e:
+                            log.error("%s reporter for %s failed: %s", reporter.name,
+                                      report.portfolio.name, e)  # fmt: skip
+            store.heartbeat(now, "reporter", "ok")
+            if every is None:
+                return 0
+            time.sleep(every)
 
 
 def cmd_record(args: argparse.Namespace) -> int:
@@ -275,6 +340,7 @@ COMMANDS = {
     "run": cmd_run,
     "replay": cmd_replay,
     "summary": cmd_summary,
+    "report": cmd_report,
     "demo": cmd_demo,
     "export": cmd_export,
     "record": cmd_record,

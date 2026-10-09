@@ -10,16 +10,12 @@ from nem.core.clock import EXCHANGE_TZ
 from nem.core.config import RiskConfig
 from nem.core.context import Context
 from nem.core.types import Decision, Trade
+from nem.stats.metrics import max_drawdown as _max_drawdown
 
 
 def max_drawdown(trades: Sequence[Trade]) -> float:
     """Largest peak-to-trough drop of cumulative realized P&L (positive dollars)."""
-    peak = equity = worst = 0.0
-    for t in trades:
-        equity += t.realized_pnl or 0.0
-        peak = max(peak, equity)
-        worst = max(worst, peak - equity)
-    return worst
+    return _max_drawdown([t.realized_pnl or 0.0 for t in trades])
 
 
 def _same_exchange_day(a: datetime, b: datetime) -> bool:
