@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from nem.core.clock import ManualClock
 from nem.core.types import Settlement
@@ -94,3 +95,29 @@ def test_fake_source_filters_series_and_hides_future_results() -> None:
     assert list(source.ticks(["KXSOL15M"])) == []
     assert source.result(btc.ticker, T0) is None
     assert source.result(btc.ticker, btc.close_time) == settled
+
+
+def test_fixture_round_trip(tmp_path: Path) -> None:
+    from nem.market.fixtures import export_fixture, import_fixture
+
+    src = Store()
+    snap = make_snapshot(depth={"yes": [(0.88, 817.01)], "no": [(0.1, 3.0)]})
+    src.insert_snapshots([snap, make_snapshot(T0 + timedelta(seconds=5), yes_bid=None)])
+    src.record_settlement(Settlement(snap.ticker, snap.series, snap.window_id, "yes", T0))
+    path = tmp_path / "f.jsonl.gz"
+    assert export_fixture(src, path) == 3
+
+    dst = Store()
+    assert import_fixture(path, dst) == 3
+    assert list(dst.iter_snapshots()) == list(src.iter_snapshots())
+    assert dst.settlement(snap.ticker) == src.settlement(snap.ticker)
+
+
+def test_example_portfolios_validate() -> None:
+    from nem.builtins import load_builtins
+    from nem.core.config import load_portfolios
+    from nem.engine.runtime import build_strategies
+
+    load_builtins()
+    examples = Path(__file__).parents[2] / "examples" / "portfolios"
+    assert len(build_strategies(load_portfolios(examples))) == 3

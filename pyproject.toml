@@ -37,7 +37,7 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-local-folder = ["factories", "kalshi_mock"]
+known-local-folder = ["engine_helpers", "factories", "kalshi_mock"]
 
 [tool.pyright]
 include = ["src", "tests"]

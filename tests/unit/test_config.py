@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from nem.core.config import (
     Secrets,
     load_portfolio,
     load_portfolios,
+    load_yaml,
+    parse_duration,
 )
 
 from factories import portfolio_dict
@@ -33,21 +36,58 @@ def test_valid_portfolio() -> None:
     assert p.risk.max_open_positions is None
 
 
-def test_poll_seconds_inherits_and_overrides() -> None:
+def test_check_every_inherits_and_overrides() -> None:
     p = PortfolioConfig.model_validate(
         portfolio_dict(
-            poll_seconds=7,
-            strategies=[strategy_dict(), strategy_dict(name="fast", poll_seconds=1)],
+            check_every="7s",
+            strategies=[strategy_dict(), strategy_dict(name="slow", check_every="2m")],
         )
     )
-    assert p.poll_seconds_for(p.strategy("fav90")) == 7
-    assert p.poll_seconds_for(p.strategy("fast")) == 1
+    assert p.check_every_for(p.strategy("fav90")) == timedelta(seconds=7)
+    assert p.check_every_for(p.strategy("slow")) == timedelta(minutes=2)
 
 
+@pytest.mark.parametrize(
+    ("raw", "seconds"), [("5s", 5), ("2m", 120), ("1.5h", 5400), (30, 30), (0.5, 0.5)]
+)
+def test_parse_duration(raw: object, seconds: float) -> None:
+    assert parse_duration(raw) == timedelta(seconds=seconds)
+
+
+@pytest.mark.parametrize("raw", ["0s", -1, "5", "5 days", True, None])
+def test_parse_duration_rejects(raw: object) -> None:
+    with pytest.raises(ValueError):
+        parse_duration(raw)
+
+
+def test_feeds() -> None:
+    feed = {"name": "btc_spot", "type": "fake", "product": "BTC-USD", "max_age": "30s"}
+    p = PortfolioConfig.model_validate(portfolio_dict(feeds=[feed]))
+    spec = p.feed("btc_spot")
+    assert spec.params == {"product": "BTC-USD"}
+    assert (spec.every, spec.max_age) == (timedelta(minutes=1), timedelta(seconds=30))
+    with pytest.raises(ValidationError, match="duplicate feed"):
+        PortfolioConfig.model_validate(portfolio_dict(feeds=[feed, feed]))
+    with pytest.raises(ValidationError, match="max_age"):
+        PortfolioConfig.model_validate(portfolio_dict(feeds=[{"name": "x", "type": "fake"}]))
+
+
+def test_yes_no_keys_stay_strings() -> None:
+    # YAML 1.1 would turn these into True/False
+    assert load_yaml("yes: 1\nno: 2\nside: yes\non: off\nok: true") == {
+        "yes": 1,
+        "no": 2,
+        "side": "yes",
+        "on": "off",
+        "ok": True,
+    }
+
+
+@pytest.mark.parametrize("field", ["daily_loss_cap", "max_allocation", "max_drawdown"])
 @pytest.mark.parametrize("cap", [0, -5])
-def test_daily_loss_cap_zero_or_negative_rejected(cap: float) -> None:
+def test_dollar_limits_zero_or_negative_rejected(field: str, cap: float) -> None:
     with pytest.raises(ValidationError, match="use null to disable"):
-        PortfolioConfig.model_validate(portfolio_dict(risk={"daily_loss_cap": cap}))
+        PortfolioConfig.model_validate(portfolio_dict(risk={field: cap}))
 
 
 def test_daily_loss_cap_null_disables() -> None:

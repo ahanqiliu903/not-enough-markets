@@ -1,4 +1,4 @@
-.PHONY: setup lint fmt typecheck test check secrets
+.PHONY: setup lint fmt typecheck test check secrets demo
 
 setup:
 	uv sync
@@ -22,3 +22,6 @@ secrets:
 	gitleaks git . --no-banner
 
 check: lint typecheck test
+
+demo:
+	uv run nem demo

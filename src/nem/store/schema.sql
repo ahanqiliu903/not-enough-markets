@@ -79,12 +79,30 @@ CREATE TABLE trades (
     fee          REAL NOT NULL,
     mode         TEXT NOT NULL CHECK (mode IN ('paper', 'live')),
     opened_at    TEXT NOT NULL,
+    close_time   TEXT NOT NULL,
     won          INTEGER,                -- NULL until settled
     realized_pnl REAL,
     settled_at   TEXT,
     PRIMARY KEY (portfolio, strategy, window_id)
 );
 CREATE INDEX trades_settled_at ON trades (settled_at);
+
+CREATE TABLE ledger (                  -- cash movements that aren't trades, e.g. interest
+    portfolio  TEXT NOT NULL,
+    ts         TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    amount     REAL NOT NULL,
+    PRIMARY KEY (portfolio, kind, ts)
+);
+
+CREATE TABLE feed_values (             -- external data, replayed by `known_at`
+    feed        TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    value       REAL NOT NULL,
+    known_at    TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (feed, key, known_at)
+);
 
 CREATE TABLE stats (                   -- learned per-strategy counts, e.g. win rate by side
     portfolio TEXT NOT NULL,

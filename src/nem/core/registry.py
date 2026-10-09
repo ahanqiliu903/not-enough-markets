@@ -1,4 +1,4 @@
-"""Plugin registry: signals, gates, sizers and reporters are registered by name and
+"""Plugin registry: signals, gates, sizers, feeds and reporters are registered by name and
 built from YAML specs. Adding a plugin is one file plus one decorator, no engine edits.
 
     @register("sizer", "fixed")
@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from nem.core.config import PluginSpec
 
-Kind = Literal["signal", "gate", "sizer", "reporter"]
+Kind = Literal["signal", "gate", "sizer", "feed", "reporter"]
 
 
 class PluginError(ValueError):

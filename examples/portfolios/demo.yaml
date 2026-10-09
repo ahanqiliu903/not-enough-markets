@@ -1,0 +1,59 @@
+# Example paper portfolio used by `make demo`. It replays about two hours of recorded
+# Kalshi BTC and ETH 15-minute markets (examples/data/sample.jsonl.gz).
+#
+# Hypothesis being tested: "contracts priced 90c+ win more often than their price implies".
+# The strategies are variants of that idea, so their results can be compared side by side.
+# Two hours is a tiny sample: this demonstrates the machinery, not an edge.
+name: demo
+mode: paper
+starting_balance: 1000
+interest_apy: 0.0325      # Kalshi's APY changes; check the current rate
+check_every: 5s
+
+risk:
+  daily_loss_cap: 100
+  max_drawdown: null
+  max_open_positions: 4
+
+feeds: []
+
+strategies:
+  # Buy the 90c+ favorite any time during the window.
+  - name: fav90_any
+    series: KXBTC15M
+    signal:
+      type: extreme_favorite
+      threshold: 0.90
+      min_edge: 0.01
+      priors: {yes: {wins: 93, n: 100}, no: {wins: 93, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.95}
+    sizing: {type: fixed, contracts: 5}
+
+  # Same, but only in the last 5 minutes (less time for the price to reverse).
+  - name: fav90_late
+    series: KXBTC15M
+    signal:
+      type: extreme_favorite
+      threshold: 0.90
+      min_edge: 0.01
+      priors: {yes: {wins: 93, n: 100}, no: {wins: 93, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.95}
+      - {type: time_in_window, last_minutes: 5, min_seconds_left: 20}
+    sizing: {type: fixed, contracts: 5}
+
+  # ETH, sized with quarter Kelly and a hard cap.
+  - name: eth_kelly
+    series: KXETH15M
+    check_every: 30s
+    signal:
+      type: extreme_favorite
+      threshold: 0.90
+      min_edge: 0.01
+      priors: {yes: {wins: 93, n: 100}, no: {wins: 93, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.95}
+      - {type: time_in_window, last_minutes: 5, min_seconds_left: 20}
+    sizing: {type: kelly, fraction: 0.25, max_contracts: 20}
+    risk: {max_open_positions: 1, stop_if_losing_after: 20}

@@ -50,6 +50,7 @@ def make_trade(window_id: str = WINDOW, **kw: Any) -> Trade:
         "fee": 0.02,
         "mode": "paper",
         "opened_at": T0,
+        "close_time": T0 + timedelta(minutes=15),
     }
     fields.update(kw)
     return Trade(**fields)

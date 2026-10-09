@@ -14,7 +14,7 @@ A template for Kalshi algorithmic trading.
 > It is meant to be an all-in-one home for automated prediction market trading.
 
 > [!NOTE]
-> **Work in progress.** You can record live Kalshi market data today, but nothing trades yet, not even on paper. See [Roadmap](#roadmap).
+> **Work in progress.** You can record live Kalshi data and paper-trade on it today. Live trading, statistics and external feeds are still to come. See [Roadmap](#roadmap).
 
 ## What is this for?
 
@@ -55,12 +55,13 @@ Strategies can be `active`, `paused` or `retired`. Retired ones keep their histo
   - Feed values are **recorded with timestamps**, like market data, so replay sees only what was known at the time. Forecasts also record when they were **issued**, so a backtest can't use a forecast published after the trade.
   - Each feed has a `max_age`. Older data counts as unavailable, and each gate declares whether it then lets trades through or blocks them.
 
-Example portfolio file *(planned M3 format; may change while it's built)*:
+Example portfolio file *(`coinbase_spot` and `spot_agrees` are examples of feed plugins planned for M6; everything else works today)*:
 
 ```yaml
 name: btc_research
 mode: paper
 starting_balance: 1000
+interest_apy: 0.0325             # Kalshi's current rate; it changes, so check it. null = off
 check_every: 5s                  # default for every strategy below
 risk: {daily_loss_cap: null, max_open_positions: 3}   # null = disabled
 
@@ -95,18 +96,22 @@ Positions are held to settlement for now. Exits before settlement (stop-loss, ta
 3. Set up the required data pipelines.
    - If data needs to be collected before backtesting, set up logging and schedules to do so.
 4. Run a backtest (**not** a validation).
-5. Run paper trading.
-6. *(Optional)* Deploy live.
+5. For strategies that weren't rejected, get suggested starting settings (e.g. entry threshold, time in window, sizing).
+   - A small parameter sweep over recorded data, tuned on one period and checked on a later one it never saw.
+   - Suggests the middle of a stable region of good settings rather than the single best point, and shows sample sizes, so you don't start paper trading on a lucky fit.
+6. Run paper trading with those settings.
+7. *(Optional)* Deploy live.
 
 ### Hot take: I hate backtests
 
-Especially nowadays, it's very easy for them to give optimistic results. The workflow includes a backtest only to reject strategies that show clearly negative results. Paper trading is a better indicator.
+Especially nowadays, it's very easy for them to give optimistic results. The workflow includes a backtest only to reject strategies that show clearly negative results, and the suggested settings are just a sensible starting point. Paper trading is a better indicator.
 
 ## Design principles
 
 - **Same code for backtest, paper and live.** Only the data sources (market and feeds) and the broker change, so a strategy can't behave differently in replay than it does live.
 - **No look-ahead.** Signals and gates only see results that settled, and feed values that were published, *before* the current time. This is enforced in one place and tested.
 - **Every signal is logged with a reason**, including the ones that were skipped, so you can measure what each gate actually did.
+- **Kalshi's fees and interest are part of every number.** Paper fills charge Kalshi's taker fee (rounded up to the cent, per order) and walk the real orderbook, so entry prices include slippage. Edge and break-even win rate are computed after fees. Paper portfolios can accrue Kalshi's interest (APY on cash and open positions, accrued daily), so a strategy has to beat simply holding cash to look good.
 - **Idempotent orders.** Order IDs are deterministic, so a retry can never double-fill.
 - **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed. Risk limits use `null` for "disabled", never `0`.
 - **Secrets only from environment variables.** Nothing secret is ever in a config file or a commit; [gitleaks](https://github.com/gitleaks/gitleaks) runs on every commit and in CI.
@@ -118,15 +123,36 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 | ✅ | **M0 Skeleton** | Packaging (uv), lint (ruff), strict typing (pyright), tests (pytest), secret scanning, CI |
 | ✅ | **M1 Core** | Portfolio/strategy config with validation, plugin registry, SQLite store, look-ahead-safe strategy context, Kalshi window-code math |
 | ✅ | **M2 Market data** | Kalshi read client and auth, `nem record` to collect market snapshots and settlements, replay from recorded data |
-| ⬜ | **M3 Paper trading** | The trading loop; plugin interfaces for signals, gates, sizing, risk and feeds; paper broker with fees and realistic fills; `extreme_favorite`, `max_entry_price`, `time_in_window`, `fixed` / `percent` / `kelly` sizing; `nem init` / `nem portfolio` / `nem strategy` commands; `make demo` |
+| ✅ | **M3 Paper trading** | The trading loop; plugin interfaces for signals, gates, sizing, risk and feeds; paper broker with Kalshi fees, realistic fills and interest accrual; `extreme_favorite`, `max_entry_price`, `time_in_window`, `fixed` / `percent` / `kelly` sizing; `nem init` / `nem portfolio` / `nem strategy` commands; `make demo` |
 | ⬜ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
 | ⬜ | **M5 24/7 operation** | systemd service, heartbeats, `nem status` / `nem halt` / `nem resume` |
 | ⬜ | **M6 External feeds** | First real feeds (crypto spot price, weather forecast) with recording, and example feed-based gates |
-| ⬜ | **M7 Backtest** | Replay recorded market and feed data through the same loop, to filter out losers |
+| ⬜ | **M7 Backtest & suggested settings** | Replay recorded market and feed data through the same loop to filter out losers; parameter sweeps with held-out validation to suggest starting settings for paper trading |
 | ⬜ | **M8 Live trading** | Live broker on Kalshi (demo first), risk manager, budgets across live portfolios |
 | ⬜ | **M9 Docs** | Lessons from running live, "write a signal / feed" guides, a worked case study |
 
 Later: exits before settlement, the agent workflow (hypothesis in plain English → portfolio config), and a website view of portfolios and strategies.
+
+## Quickstart
+
+No Kalshi account needed for any of this.
+
+```bash
+make setup                 # install dependencies
+make demo                  # replay ~2h of bundled BTC/ETH data through examples/portfolios/
+```
+
+Paper-trade your own idea:
+
+```bash
+uv run nem init                                          # first portfolio (asks name + balance)
+uv run nem strategy add paper fav90 --series KXBTC15M    # appends a template; edit it in portfolios/paper.yaml
+uv run nem validate                                      # checks every file and plugin
+uv run nem run                                           # paper-trade on live Kalshi prices (Ctrl-C stops)
+uv run nem summary                                       # trades, win rate vs break-even, P&L, why signals were skipped
+```
+
+More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
 
 ## Recording market data
 

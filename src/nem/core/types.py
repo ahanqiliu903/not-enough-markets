@@ -159,6 +159,7 @@ class Trade:
     fee: float
     mode: Mode
     opened_at: datetime
+    close_time: datetime  # when the market closes; settlement is checked after this
     won: bool | None = None  # None until settled
     realized_pnl: float | None = None
     settled_at: datetime | None = None
@@ -166,6 +167,11 @@ class Trade:
     @property
     def settled(self) -> bool:
         return self.settled_at is not None
+
+    @property
+    def cost(self) -> float:
+        """Cash paid to open: contracts at the average price, plus fees."""
+        return self.avg_price * self.qty + self.fee
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,3 +186,21 @@ class Settlement:
 
     def __post_init__(self) -> None:
         _require_aware("settled_at", self.settled_at)
+
+
+@dataclass(frozen=True, slots=True)
+class FeedValue:
+    """One observation from an external feed.
+
+    `known_at` is when the value became knowable (publish/issue time), not what it is about.
+    A forecast issued at 06:00 for tomorrow's high has `known_at` 06:00 and a key like
+    `"2026-10-09/high"`. Replay only shows values with `known_at <= now`.
+    """
+
+    feed: str
+    key: str
+    value: float
+    known_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_aware("known_at", self.known_at)

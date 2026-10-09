@@ -16,6 +16,7 @@ from typing import Any, Self
 from nem.core.types import (
     DecisionKind,
     Depth,
+    FeedValue,
     Fill,
     MarketSnapshot,
     Mode,
@@ -272,6 +273,15 @@ class Store:
         ).fetchone()
         return None if row is None else row[0]
 
+    def order_attempts(self, key: StrategyKey, window_id: str, side: Side) -> int:
+        """Orders already sent for this strategy, window and side (next attempt number)."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM orders WHERE portfolio = ? AND strategy = ? AND window_id = ?"
+            " AND side = ?",
+            (*key, window_id, side),
+        ).fetchone()
+        return int(row[0])
+
     def record_fill(self, fill: Fill) -> None:
         with self._conn:
             self._conn.execute(
@@ -288,7 +298,7 @@ class Store:
             with self._conn:
                 self._conn.execute(
                     "INSERT INTO trades (portfolio, strategy, window_id, ticker, side, avg_price,"
-                    " qty, fee, mode, opened_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    " qty, fee, mode, opened_at, close_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         trade.portfolio,
                         trade.strategy,
@@ -300,6 +310,7 @@ class Store:
                         trade.fee,
                         trade.mode,
                         _ts(trade.opened_at),
+                        _ts(trade.close_time),
                     ),
                 )
         except sqlite3.IntegrityError as e:
@@ -324,24 +335,48 @@ class Store:
         if cur.rowcount != 1:
             raise StoreError(f"no open trade for {key[0]}/{key[1]} {window_id}")
 
-    def open_trades(self, portfolio: str | None = None) -> list[Trade]:
+    def open_trades(
+        self, portfolio: str | None = None, strategy: StrategyKey | None = None
+    ) -> list[Trade]:
         sql = "SELECT * FROM trades WHERE settled_at IS NULL"
-        args: tuple[str, ...] = ()
+        args: list[str] = []
         if portfolio is not None:
             sql += " AND portfolio = ?"
-            args = (portfolio,)
+            args.append(portfolio)
+        if strategy is not None:
+            sql += " AND portfolio = ? AND strategy = ?"
+            args.extend(strategy)
         return [_trade(r) for r in self._conn.execute(sql + " ORDER BY opened_at", args)]
+
+    def trades_due(self, now: datetime) -> list[Trade]:
+        """Open trades whose market has closed, so their result may be available."""
+        rows = self._conn.execute(
+            "SELECT * FROM trades WHERE settled_at IS NULL AND close_time <= ? ORDER BY close_time",
+            (_ts(now),),
+        )
+        return [_trade(r) for r in rows]
+
+    def has_trade(self, key: StrategyKey, window_id: str) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM trades WHERE portfolio = ? AND strategy = ? AND window_id = ?",
+            (*key, window_id),
+        ).fetchone()
+        return row is not None
 
     def settled_trades(
         self,
         strategies: Sequence[StrategyKey] | None = None,
         before: datetime | None = None,
         limit: int | None = None,
+        portfolio: str | None = None,
     ) -> list[Trade]:
         """Settled trades, oldest first. `before` is strict: `settled_at < before`.
         `limit` keeps the most recent N."""
         sql = "SELECT * FROM trades WHERE settled_at IS NOT NULL"
         args: list[str | int] = []
+        if portfolio is not None:
+            sql += " AND portfolio = ?"
+            args.append(portfolio)
         if strategies is not None:
             clause, keys = _strategies_filter(strategies)
             sql += f" AND {clause}"
@@ -354,6 +389,65 @@ class Store:
             sql += " LIMIT ?"
             args.append(limit)
         return [_trade(r) for r in reversed(self._conn.execute(sql, args).fetchall())]
+
+    # --- ledger (interest and other non-trade cash) -----------------------------
+
+    def add_ledger(self, portfolio: str, ts: datetime, kind: str, amount: float) -> bool:
+        """Idempotent per (portfolio, kind, ts). Returns False if it was already there."""
+        with self._conn:
+            cur = self._conn.execute(
+                "INSERT OR IGNORE INTO ledger (portfolio, ts, kind, amount) VALUES (?,?,?,?)",
+                (portfolio, _ts(ts), kind, amount),
+            )
+        return cur.rowcount == 1
+
+    def ledger_total(self, portfolio: str, before: datetime | None = None) -> float:
+        sql = "SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE portfolio = ?"
+        args = [portfolio]
+        if before is not None:
+            sql += " AND ts < ?"
+            args.append(_ts(before))
+        return float(self._conn.execute(sql, args).fetchone()[0])
+
+    def last_ledger(self, portfolio: str, kind: str) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT MAX(ts) FROM ledger WHERE portfolio = ? AND kind = ?", (portfolio, kind)
+        ).fetchone()
+        return None if row[0] is None else _dt(row[0])
+
+    # --- feeds ------------------------------------------------------------------
+
+    def record_feed_values(self, values: Sequence[FeedValue], recorded_at: datetime) -> None:
+        """Idempotent per (feed, key, known_at)."""
+        with self._conn:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO feed_values (feed, key, value, known_at, recorded_at)"
+                " VALUES (?,?,?,?,?)",
+                [(v.feed, v.key, v.value, _ts(v.known_at), _ts(recorded_at)) for v in values],
+            )
+
+    def feed_values(
+        self,
+        feed: str,
+        key: str,
+        as_of: datetime,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[FeedValue]:
+        """Values known by `as_of` (inclusive), oldest first. `limit` keeps the newest N."""
+        sql = "SELECT * FROM feed_values WHERE feed = ? AND key = ? AND known_at <= ?"
+        args: list[str | int] = [feed, key, _ts(as_of)]
+        if since is not None:
+            sql += " AND known_at >= ?"
+            args.append(_ts(since))
+        sql += " ORDER BY known_at DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            args.append(limit)
+        rows = self._conn.execute(sql, args).fetchall()
+        return [
+            FeedValue(r["feed"], r["key"], r["value"], _dt(r["known_at"])) for r in reversed(rows)
+        ]
 
     # --- stats, heartbeats ---------------------------------------------------
 
@@ -414,6 +508,7 @@ def _trade(r: sqlite3.Row) -> Trade:
         fee=r["fee"],
         mode=r["mode"],
         opened_at=_dt(r["opened_at"]),
+        close_time=_dt(r["close_time"]),
         won=None if r["won"] is None else bool(r["won"]),
         realized_pnl=r["realized_pnl"],
         settled_at=None if r["settled_at"] is None else _dt(r["settled_at"]),
