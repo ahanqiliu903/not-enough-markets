@@ -22,7 +22,7 @@ Say you have a hypothesis:
 
 > *Is Kalshi's 15-min BTC Up/Down market overpricing contracts in the 90c+ price range?*
 
-How do you test it? Given the constraints of the strategy, a code editor/agent *(planned)* takes in inputs about the strategy you want to test (which market, price range, how often, etc.) and turns them into a testable paper trading system, with automated market and portfolio data ingestion and analysis.
+How do you test it? Given the constraints of the strategy, a coding agent (Claude Code, Codex, Cursor, ...; see [AGENTS.md](AGENTS.md)) takes in inputs about the strategy you want to test (which market, price range, how often, etc.) and turns them into a testable paper trading system, with automated market and portfolio data ingestion and analysis.
 
 - **No new infrastructure every time.** Reuse the same engine for every idea.
 - **Common parameters** (stricter entry, timing, sizing) so you can tweak your strategy as you go.
@@ -133,7 +133,7 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 | ⬜ | **M8 Live trading** | Live broker on Kalshi (demo first), risk manager, budgets across live portfolios |
 | ⬜ | **M9 Docs** | Lessons from running live, "write a signal / feed" guides, a worked case study |
 
-Later: exits before settlement, the agent workflow (hypothesis in plain English → portfolio config), and a website view of portfolios and strategies.
+Later: exits before settlement, deeper agent tooling (hypothesis in plain English → portfolio config), and a website view of portfolios and strategies.
 
 ## Quickstart
 
@@ -155,6 +155,8 @@ uv run nem summary                                       # statistics per strate
 ```
 
 Keep it running on a server: see [Running 24/7](#running-247).
+
+Which series to trade: [docs/kalshi-tickers.txt](docs/kalshi-tickers.txt) lists the crypto 15-minute and daily temperature series, with their settlement sources (always read a market's rules before trading it). Working with a coding agent? Point it at [AGENTS.md](AGENTS.md).
 
 More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
 

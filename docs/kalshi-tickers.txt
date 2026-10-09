@@ -1,0 +1,112 @@
+Kalshi series tickers: crypto 15-minute and daily temperature high/low
+=========================================================================
+
+Fetched from Kalshi's public API on 2026-10-08 (only series with open markets that day).
+Kalshi adds, renames and retires series; a title can even be wrong (KXHIGHTSDF is titled
+"SATX" but settles on Louisville). ALWAYS read the market's rules before trading it:
+
+  curl -s "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXHIGHNY&status=open&limit=1" \
+    | python3 -c "import sys,json; m=json.load(sys.stdin)['markets'][0]; print(m['rules_primary'])"
+
+Use the series ticker as `series:` in a portfolio strategy. Event tickers (one market
+window) look like SERIES-YYMONDD (daily) or SERIES-YYMONDDHHMM (15-minute, close time in
+US Eastern). Individual markets add a strike suffix, e.g. KXHIGHNY-26OCT09-T76.
+
+
+CRYPTO, 15-MINUTE UP/DOWN
+-------------------------
+Every 15 minutes, 24/7. YES = the price at close (60-second average of the CF Benchmarks
+Real Time Index) is at or above the price at open. One market per window. The target price
+is in the market's floor_strike once the window opens. Settlement: CF Benchmarks.
+Spot proxy feed: coinbase_spot (product e.g. BTC-USD).
+
+  series            title (Kalshi)              coinbase product
+  KXBNB15M          BNB 15 Minute               BNB-USD
+  KXBTC15M          Bitcoin price up down       BTC-USD
+  KXCRYPTOLEAD15M   Coin Race 15 minutes        n/a (multi-coin, custom strike)
+  KXDOGE15M         Dogecoin 15 Minute          DOGE-USD
+  KXETH15M          ETH 15M price up down       ETH-USD
+  KXHYPE15M         Hype 15 min                 HYPE-USD
+  KXNEAR15M         NEAR 15m                    NEAR-USD
+  KXSOL15M          Solana 15 minutes           SOL-USD
+  KXXRP15M          XRP 15 Minute               XRP-USD
+  KXZEC15M          Zcash 15min                 ZEC-USD
+
+  All nine Coinbase products answered on 2026-10-08; Coinbase spot is a proxy for the
+  CF Benchmarks index, not the settlement value.
+  KXCRYPTOLEAD15M ("Coin Race") compares coins and uses a custom strike, which the
+  feed_agrees gate can't evaluate.
+
+
+DAILY TEMPERATURE (HIGH / LOW)
+------------------------------
+One event per day with several bracket markets ("greater", "less" or "between" a strike, in
+degrees F). Settlement: the value The Weather Company reports for the station named in the
+rules (weather.com/kalshi), NOT the NWS climate report, for every series below.
+Rules read like "If the minimum temperature recorded at New York City (CLINYC) for Oct 9,
+2026, is greater than 57F according to The Weather Company, then Yes." Read them for each
+series: the station and the date matter, and they differ by series.
+
+Forecast feed: nws_forecast with the station's lat/lon (a free NWS forecast for the same
+spot, a predictor, not the settlement source). Coordinates below come from
+api.weather.gov/stations/<ICAO>, with the ICAO code inferred from the station code in the
+rules (CLINYC -> KNYC).
+
+Highs
+  series        city            station        lat        lon  station name
+  KXHIGHTATL    Atlanta         KATL       33.6403   -84.4269  Atlanta, Hartsfield - Jackson Atlanta International Airport
+  KXHIGHAUS     Austin          KAUS        30.183   -97.6799  Austin-Bergstrom International Airport
+  KXHIGHTBOS    Boston          KBOS       42.3606   -71.0106  Boston, Logan International Airport
+  KXHIGHCHI     Chicago         KMDW       41.7842   -87.7553  Chicago, Chicago Midway Airport
+  KXHIGHTDAL    Dallas          KDFW       32.8974    -97.022  Dallas/Fort Worth International Airport
+  KXHIGHDEN     Denver          KDEN       39.8466  -104.6562  Denver, Denver International Airport
+  KXHIGHTHOU    Houston         KHOU       29.6375   -95.2825  Houston, Houston Hobby Airport
+  KXHIGHTLV     Las Vegas       KLAS       36.0719  -115.1634  Harry Reid International Airport
+  KXHIGHLAX     Los Angeles     KLAX       33.9381  -118.3889  Los Angeles, Los Angeles International Airport
+  KXHIGHTSDF    Louisville      KSDF       38.1741   -85.7365  Louisville Muhammad Ali International Airport
+  KXHIGHMIA     Miami           KMIA       25.7906   -80.3164  Miami, Miami International Airport
+  KXHIGHTMIN    Minneapolis     KMSP       44.8831   -93.2289  Minneapolis, Minneapolis-St. Paul International Airport
+  KXHIGHTNOLA   New Orleans     KMSY       29.9928   -90.2508  New Orleans, New Orleans International Airport
+  KXHIGHNY      New York City   KNYC       40.7833   -73.9667  New York City, Central Park
+  KXHIGHTEWR    Newark          KEWR       40.6825   -74.1694  Newark, Newark International Airport
+  KXHIGHTOKC    Oklahoma City   KOKC       35.3886   -97.6003  Oklahoma City, Will Rogers World Airport
+  KXHIGHPHIL    Philadelphia    KPHL       39.8733   -75.2268  Philadelphia, Philadelphia International Airport
+  KXHIGHTPHX    Phoenix         KPHX       33.4278  -112.0035  Phoenix, Phoenix Sky Harbor International Airport
+  KXHIGHTSATX   San Antonio     KSAT       29.5328   -98.4636  San Antonio, San Antonio International Airport
+  KXHIGHTSAN    San Diego       KSAN       32.7336  -117.1831  San Diego International Airport
+  KXHIGHTSFO    San Francisco   KSFO       37.6196  -122.3656  San Francisco, San Francisco International Airport
+  KXHIGHTSEA    Seattle         KSEA       47.4447  -122.3136  Seattle, Seattle-Tacoma International Airport
+  KXHIGHTTTN    Trenton         KTTN       40.2764   -74.8164  Trenton-Mercer Airport
+  KXHIGHTDC     Washington DC   KDCA       38.8483   -77.0342  Washington/Reagan National Airport, DC
+
+Lows
+  series        city            station        lat        lon  station name
+  KXLOWTATL     Atlanta         KATL       33.6403   -84.4269  Atlanta, Hartsfield - Jackson Atlanta International Airport
+  KXLOWTAUS     Austin          KAUS        30.183   -97.6799  Austin-Bergstrom International Airport
+  KXLOWTBOS     Boston          KBOS       42.3606   -71.0106  Boston, Logan International Airport
+  KXLOWTCHI     Chicago         KMDW       41.7842   -87.7553  Chicago, Chicago Midway Airport
+  KXLOWTDAL     Dallas          KDFW       32.8974    -97.022  Dallas/Fort Worth International Airport
+  KXLOWTDEN     Denver          KDEN       39.8466  -104.6562  Denver, Denver International Airport
+  KXLOWTHOU     Houston         KHOU       29.6375   -95.2825  Houston, Houston Hobby Airport
+  KXLOWTLV      Las Vegas       KLAS       36.0719  -115.1634  Harry Reid International Airport
+  KXLOWTLAX     Los Angeles     KLAX       33.9381  -118.3889  Los Angeles, Los Angeles International Airport
+  KXLOWTSDF     Louisville      KSDF       38.1741   -85.7365  Louisville Muhammad Ali International Airport
+  KXLOWTMIA     Miami           KMIA       25.7906   -80.3164  Miami, Miami International Airport
+  KXLOWTMIN     Minneapolis     KMSP       44.8831   -93.2289  Minneapolis, Minneapolis-St. Paul International Airport
+  KXLOWTNOLA    New Orleans     KMSY       29.9928   -90.2508  New Orleans, New Orleans International Airport
+  KXLOWTNYC     New York City   KNYC       40.7833   -73.9667  New York City, Central Park
+  KXLOWTEWR     Newark          KEWR       40.6825   -74.1694  Newark, Newark International Airport
+  KXLOWTOKC     Oklahoma City   KOKC       35.3886   -97.6003  Oklahoma City, Will Rogers World Airport
+  KXLOWTPHIL    Philadelphia    KPHL       39.8733   -75.2268  Philadelphia, Philadelphia International Airport
+  KXLOWTPHX     Phoenix         KPHX       33.4278  -112.0035  Phoenix, Phoenix Sky Harbor International Airport
+  KXLOWTSATX    San Antonio     KSAT       29.5328   -98.4636  San Antonio, San Antonio International Airport
+  KXLOWTSAN     San Diego       KSAN       32.7336  -117.1831  San Diego International Airport
+  KXLOWTSFO     San Francisco   KSFO       37.6196  -122.3656  San Francisco, San Francisco International Airport
+  KXLOWTSEA     Seattle         KSEA       47.4447  -122.3136  Seattle, Seattle-Tacoma International Airport
+  KXLOWTTTN     Trenton         KTTN       40.2764   -74.8164  Trenton-Mercer Airport
+  KXLOWTDC      Washington DC   KDCA       38.8483   -77.0342  Washington/Reagan National Airport, DC
+
+Also listed by Kalshi but with no open markets on 2026-10-08 (older or duplicate series,
+or different settlement sources): e.g. KXHIGHHOU / KXHIGHOU (NWS Houston report), KXLOWNY,
+KXLOWNYC, KXHIGHUS, international cities (KXHIGHTEGLL London, KXHIGHTRJTT Tokyo, ...).
+Check the API before using any of them.

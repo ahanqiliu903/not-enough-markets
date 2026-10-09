@@ -13,8 +13,8 @@ feeds:
   # reading; NWS is a free forecast for the same spot, not the settlement source)
   - name: nyc
     type: nws_forecast
-    lat: 40.7789
-    lon: -73.9692
+    lat: 40.7833
+    lon: -73.9667
     user_agent: "nem paper trading (you@example.com)"   # NWS asks for contact info
     every: 30m
     max_age: 12h
