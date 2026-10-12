@@ -188,6 +188,9 @@ Tune the test with `--edge 0.03`, `--alpha`, `--power`.
 
 ## Reports (CSV, Google Sheets)
 
+**Sample:** [live paper-trading report](https://docs.google.com/spreadsheets/d/1ky1-ilFsvnDLwWVcjeTkvoWh3sUKh4DMgYDnd9wsVy8/edit?usp=sharing)
+(Google Sheets, view only, updated every 5 minutes from a NEM server).
+
 Reporting runs as its own process, so reports keep flowing even when no strategy is running:
 
 ```bash
@@ -195,7 +198,8 @@ uv run nem report                 # print and publish once
 uv run nem report --every 5m      # keep publishing
 ```
 
-Each portfolio chooses where its reports go:
+Each portfolio chooses where its reports go, with a top-level `reporting:` list in its
+file in `portfolios/` (next to `starting_balance`, not inside `strategies:`):
 
 ```yaml
 reporting:

@@ -26,7 +26,8 @@ problem in one never stops the other.
 
 ```bash
 # as root
-adduser --disabled-password --gecos "" nem
+useradd --create-home --shell /bin/bash nem
+id nem                                # must print uid=...(nem); stop here if it doesn't
 apt-get update && apt-get install -y git sqlite3
 
 # as nem
@@ -64,7 +65,25 @@ systemctl enable --now nem-run nem-report
    chown root:nem /etc/nem/sheets.json && chmod 640 /etc/nem/sheets.json
    printf 'SHEETS_CREDENTIALS=/etc/nem/sheets.json\nSHEET_ID=<SHEET_ID>\n' >> /etc/nem/nem.env
    ```
-4. Add a reporter to each portfolio file: `reporting: [{type: sheets}]`.
+4. Turn on Sheets in each portfolio file you want reported. Add `reporting: [{type: sheets}]`
+   as a top-level line (no indent, not inside `strategies:`):
+   ```bash
+   sudo -iu nem
+   cd not-enough-markets && nano portfolios/<portfolio>.yaml   # Ctrl-O Enter saves, Ctrl-X exits
+   ```
+   ```yaml
+   name: paper
+   mode: paper
+   starting_balance: 1000
+   reporting: [{type: sheets}]     # add this line; [{type: sheets}, {type: csv}] keeps a CSV copy too
+
+   strategies:
+     ...
+   ```
+   ```bash
+   uv run nem validate             # must print OK
+   exit                            # back to root
+   ```
 5. Test once by hand, then restart the service:
    ```bash
    sudo -u nem bash -c 'set -a; . /etc/nem/nem.env; cd ~/not-enough-markets && .venv/bin/nem report'
