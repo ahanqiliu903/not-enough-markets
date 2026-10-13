@@ -480,20 +480,34 @@ def cmd_report(args: argparse.Namespace) -> int:
     """Separate from the runner on purpose: reports keep flowing whatever the bots do."""
     import time
 
-    from nem.core.config import parse_duration
-    from nem.core.registry import REGISTRY
+    from nem.core.config import ConfigError, PortfolioConfig, load_portfolios, parse_duration
+    from nem.core.registry import REGISTRY, PluginError
     from nem.reporting.base import Reporter
     from nem.stats.report import render_all
     from nem.store import Store
 
-    portfolios = _load(args.dir)
-    reporters = {
-        p.name: [REGISTRY.build("reporter", spec, Reporter) for spec in p.reporting]
-        for p in portfolios
-    }
+    def build(ps: list[PortfolioConfig]) -> dict[str, list[Reporter]]:
+        return {
+            p.name: [REGISTRY.build("reporter", spec, Reporter) for spec in p.reporting] for p in ps
+        }
+
+    directory: Path = args.dir
+    portfolios = _load(directory)
+    reporters = build(portfolios)
+    signature = _config_signature(directory)
     every = parse_duration(args.every).total_seconds() if args.every else None
     with Store(args.db) as store:
         while True:
+            # pick up portfolio edits (new strategies, reporters) like the runner does
+            current = _config_signature(directory)
+            if current != signature:
+                signature = current
+                try:
+                    loaded = load_portfolios(directory)
+                    portfolios, reporters = loaded, build(loaded)
+                    log.info("reloaded portfolios for reporting")
+                except (ConfigError, PluginError) as e:
+                    log.error("portfolio edit rejected, still reporting the old config: %s", e)
             now = datetime.now(UTC)
             reports = _reports(store, portfolios, now, args)
             print(render_all(reports))

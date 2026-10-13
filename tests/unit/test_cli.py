@@ -124,6 +124,46 @@ def test_replay_and_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         assert store.last_heartbeat("reporter") is not None
 
 
+def test_report_loop_picks_up_portfolio_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    d = tmp_path / "portfolios"
+    csv_dir = tmp_path / "out"
+    run_cli("portfolio", "new", "research", "--dir", str(d))
+    yaml_path = d / "research.yaml"
+    yaml_path.write_text(
+        yaml_path.read_text().replace(
+            "feeds: []", f"feeds: []\nreporting: [{{type: csv, path: '{csv_dir}'}}]"
+        )
+    )
+    strategies_csv = csv_dir / "research" / "strategies.csv"
+    sleeps = 0
+
+    def fake_sleep(_seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 1:
+            assert "btc" not in strategies_csv.read_text()
+            run_cli("strategy", "add", "research", "btc", "--series", "KXBTC15M", "--dir", str(d))
+            st = yaml_path.stat()
+            os.utime(yaml_path, (st.st_atime, st.st_mtime + 10))  # coarse mtime clocks
+        elif sleeps == 2:
+            yaml_path.write_text("name: research\nbogus: 1\n")  # bad edit: keep old config
+            st = yaml_path.stat()
+            os.utime(yaml_path, (st.st_atime, st.st_mtime + 20))
+        else:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("time.sleep", fake_sleep)
+    db = str(tmp_path / "nem.db")
+    with pytest.raises(KeyboardInterrupt):
+        run_cli("report", "--every", "5m", "--db", db, "--dir", str(d))
+    assert sleeps == 3
+    assert "btc" in strategies_csv.read_text()
+
+
 def test_run_once_records_and_trades_offline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
