@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "summary_report.schema.json",
+  "title": "nem summary --json",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "portfolios"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "report layout version; the app accepts major 1"
+    },
+    "portfolios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "summary",
+          "strategies"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "pattern": "^1\\.[0-9]+$",
+            "description": "report layout version; the app accepts major 1"
+          },
+          "summary": {
+            "$ref": "summary_row.schema.json"
+          },
+          "strategies": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "strategy_row.schema.json"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "signal_reasons",
+                    "calibration"
+                  ],
+                  "properties": {
+                    "signal_reasons": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      },
+                      "description": "signal count by decision reason, e.g. 'ok: fixed 5' or 'gate:max_entry_price'"
+                    },
+                    "calibration": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lo_rate",
+                          "hi_rate",
+                          "n",
+                          "predicted_rate",
+                          "observed_rate"
+                        ],
+                        "properties": {
+                          "lo_rate": {
+                            "type": "number"
+                          },
+                          "hi_rate": {
+                            "type": "number"
+                          },
+                          "n": {
+                            "type": "integer"
+                          },
+                          "predicted_rate": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "observed_rate": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

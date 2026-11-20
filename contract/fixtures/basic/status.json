@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "as_of": "2026-10-02T18:35:00Z",
+  "healthy": true,
+  "processes": [
+    {
+      "name": "runner",
+      "state": "ok",
+      "last_heartbeat_at": "2026-10-02T18:34:00Z",
+      "detail": "ok",
+      "expected": true
+    },
+    {
+      "name": "reporter",
+      "state": "ok",
+      "last_heartbeat_at": "2026-10-02T18:34:00Z",
+      "detail": "ok",
+      "expected": true
+    }
+  ],
+  "halts": [
+    {
+      "scope": "fixture/eth_no_edge",
+      "reason": "fixture: verdict no_edge",
+      "since": "2026-10-02T18:30:00Z"
+    }
+  ],
+  "strategies": [
+    {
+      "portfolio": "fixture",
+      "strategy": "btc_edge",
+      "series": "KXBTC15M",
+      "status": "active",
+      "halted_by": null,
+      "open": 0,
+      "settled": 170,
+      "last_signal_at": "2026-10-02T18:21:00Z"
+    },
+    {
+      "portfolio": "fixture",
+      "strategy": "eth_no_edge",
+      "series": "KXETH15M",
+      "status": "active",
+      "halted_by": "fixture/eth_no_edge",
+      "open": 0,
+      "settled": 54,
+      "last_signal_at": "2026-10-01T17:06:00Z"
+    },
+    {
+      "portfolio": "fixture",
+      "strategy": "sol_undecided",
+      "series": "KXSOL15M",
+      "status": "active",
+      "halted_by": null,
+      "open": 0,
+      "settled": 170,
+      "last_signal_at": "2026-10-02T18:20:00Z"
+    }
+  ]
+}

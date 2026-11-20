@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "portfolios": [
+    {
+      "schema_version": "1.0",
+      "summary": {
+        "schema_version": "1.0",
+        "portfolio": "fixture",
+        "mode": "paper",
+        "as_of": "2026-10-01T00:00:00Z",
+        "started_at": null,
+        "starting_balance_usd": 1000.0,
+        "realized_pnl_usd": 0,
+        "interest_usd": 0.0,
+        "equity_usd": 1000.0,
+        "return_rate": 0.0,
+        "open_positions": 0,
+        "open_cost_usd": 0,
+        "interest_apy": 0.04,
+        "cash_benchmark_usd": null,
+        "pnl_vs_cash_usd": null
+      },
+      "strategies": []
+    }
+  ]
+}

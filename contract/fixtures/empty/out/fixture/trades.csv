@@ -1,0 +1,1 @@
+schema_version,portfolio,strategy,window_id,ticker,side,contracts,entry_price_cents,fee_usd,cost_per_contract_cents,mode,opened_at,close_time,settled_at,result,pnl_usd

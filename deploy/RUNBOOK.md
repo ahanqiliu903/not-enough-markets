@@ -92,6 +92,26 @@ systemctl enable --now nem-run nem-report
    Each portfolio gets three tabs: `<portfolio> summary`, `<portfolio> strategies`,
    `<portfolio> trades`.
 
+## Snapshots for NEM Desk (optional)
+
+The desktop app reads a consistent copy of the database, never the live file. A timer
+refreshes `data/snapshot/nem.db` every 15 minutes at the lowest CPU and disk priority (only
+the latest copy is kept: it's the size of `data/nem.db`, so check `df -h /` first):
+
+```bash
+# as root
+cp /home/nem/not-enough-markets/deploy/nem-snapshot.{service,timer} /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now nem-snapshot.timer
+systemctl start nem-snapshot && ls -lh /home/nem/not-enough-markets/data/snapshot/   # test once
+```
+
+Then pull it to your laptop (NEM Desk can do this from Settings):
+
+```bash
+rsync -az root@<server>:/home/nem/not-enough-markets/data/snapshot/nem.db ~/nem-cache/nem.db
+rsync -az root@<server>:/home/nem/not-enough-markets/out/ ~/nem-cache/out/
+```
+
 ## Day to day
 
 ```bash

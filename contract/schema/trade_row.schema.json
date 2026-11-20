@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trade_row.schema.json",
+  "title": "Trade row",
+  "description": "One row of out/<portfolio>/trades.csv and the <portfolio> trades tab (settled and open).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "portfolio",
+    "strategy",
+    "window_id",
+    "ticker",
+    "side",
+    "contracts",
+    "entry_price_cents",
+    "fee_usd",
+    "cost_per_contract_cents",
+    "mode",
+    "opened_at",
+    "close_time",
+    "settled_at",
+    "result",
+    "pnl_usd"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "report layout version; the app accepts major 1"
+    },
+    "portfolio": {
+      "type": "string",
+      "description": "portfolio name"
+    },
+    "strategy": {
+      "type": "string",
+      "description": "strategy name"
+    },
+    "window_id": {
+      "type": "string",
+      "description": "Kalshi event ticker (one window)"
+    },
+    "ticker": {
+      "type": "string",
+      "description": "market ticker"
+    },
+    "side": {
+      "type": "string",
+      "description": "contract side bought",
+      "enum": [
+        "yes",
+        "no"
+      ]
+    },
+    "contracts": {
+      "type": "integer",
+      "description": "contracts held",
+      "minimum": 1
+    },
+    "entry_price_cents": {
+      "type": "number",
+      "description": "average fill price, cents",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "fee_usd": {
+      "type": "number",
+      "description": "Kalshi taker fee paid",
+      "minimum": 0
+    },
+    "cost_per_contract_cents": {
+      "type": "number",
+      "description": "price + fee per contract, cents"
+    },
+    "mode": {
+      "type": "string",
+      "description": "paper or live",
+      "enum": [
+        "paper",
+        "live"
+      ]
+    },
+    "opened_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "UTC ISO 8601 with Z"
+    },
+    "close_time": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "when the market closes"
+    },
+    "settled_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "null while open"
+    },
+    "result": {
+      "type": "string",
+      "description": "won, lost, or open (not settled yet)",
+      "enum": [
+        "won",
+        "lost",
+        "open"
+      ]
+    },
+    "pnl_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "realized P&L after fees; null while open"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=NotEnoughMarkets: consistent database snapshot for NEM Desk
+
+[Service]
+Type=oneshot
+User=nem
+WorkingDirectory=/home/nem/not-enough-markets
+ExecStart=/home/nem/not-enough-markets/deploy/snapshot.sh
+# Lowest priority: never slow down nem-run on a one-CPU droplet.
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=100M
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/nem/not-enough-markets/data
+PrivateTmp=true

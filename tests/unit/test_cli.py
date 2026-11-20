@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -110,6 +111,13 @@ def test_replay_and_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     assert "btc  KXBTC15M  active  1 trades (1 won)" in out
     assert run_cli("summary", "--db", str(out_db), "--dir", d) == 0
     assert "Portfolio research (paper)" in capsys.readouterr().out
+    assert run_cli("summary", "--json", "--db", str(out_db), "--dir", d) == 0
+    summary = json.loads(capsys.readouterr().out)
+    (strat,) = summary["portfolios"][0]["strategies"]
+    assert (strat["strategy"], strat["trades"], strat["verdict"]) == ("btc", 1, "undecided")
+    assert run_cli("status", "--json", "--expect", "", "--db", str(out_db), "--dir", d) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["healthy"] and status["strategies"][0]["settled"] == 1
 
     # report publishes to the portfolio's reporters (csv here)
     yaml_path = tmp_path / "portfolios" / "research.yaml"
@@ -143,12 +151,17 @@ def test_suggest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
             store.insert_snapshots(w)
             store.record_settlement(settle(w, "yes"))
     capsys.readouterr()
-    args = ["suggest", "research", "btc", "--data", str(data), "--dir", str(d)]
+    runs = tmp_path / "runs"
+    args = ["suggest", "research", "btc", "--data", str(data), "--dir", str(d), "--save", str(runs)]
     grid = ["--grid", "signal.threshold=0.85,0.9,0.95", "--min-trades", "2"]
     assert run_cli(*args, *grid) == 0
     out = capsys.readouterr().out
     assert "Suggestion: suggested starting settings" in out
     assert "- name: btc_suggested" in out
+    (saved,) = runs.glob("*.json")
+    run = json.loads(saved.read_text())
+    assert run["status"] == "suggested" and run["chosen"] is not None
+    assert [v["test"] is not None for v in run["variants"]].count(True) == 1  # chosen only
     assert run_cli(*args, *grid, "--write") == 0
     assert "btc_suggested" in [s.name for s in load_portfolio(d / "research.yaml").strategies]
 

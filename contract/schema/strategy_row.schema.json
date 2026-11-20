@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "strategy_row.schema.json",
+  "title": "Strategy row",
+  "description": "One row of out/<portfolio>/strategies.csv and the <portfolio> strategies tab.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "portfolio",
+    "strategy",
+    "series",
+    "status",
+    "trades",
+    "wins",
+    "open",
+    "win_rate",
+    "win_rate_lo",
+    "win_rate_hi",
+    "break_even_rate",
+    "edge_cents",
+    "edge_lo_cents",
+    "edge_hi_cents",
+    "z",
+    "p",
+    "pnl_usd",
+    "pnl_per_trade_usd",
+    "roi",
+    "max_drawdown_usd",
+    "trades_to_detect",
+    "trades_to_detect_edge_cents",
+    "verdict",
+    "brier"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "report layout version; the app accepts major 1"
+    },
+    "portfolio": {
+      "type": "string",
+      "description": "portfolio name"
+    },
+    "strategy": {
+      "type": "string",
+      "description": "strategy name"
+    },
+    "series": {
+      "type": "string",
+      "description": "Kalshi series ticker"
+    },
+    "status": {
+      "type": "string",
+      "description": "as set in the portfolio file",
+      "enum": [
+        "active",
+        "paused",
+        "retired"
+      ]
+    },
+    "trades": {
+      "type": "integer",
+      "description": "settled trades",
+      "minimum": 0
+    },
+    "wins": {
+      "type": "integer",
+      "description": "settled trades won",
+      "minimum": 0
+    },
+    "open": {
+      "type": "integer",
+      "description": "open trades",
+      "minimum": 0
+    },
+    "win_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "wins / trades",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "win_rate_lo": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "95% Wilson interval, low",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "win_rate_hi": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "95% Wilson interval, high",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "break_even_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "mean cost per contract (price + fee): the win rate needed to break even",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "edge_cents": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "mean (payout - cost) per contract, cents"
+    },
+    "edge_lo_cents": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "edge interval low (from the Wilson interval), cents"
+    },
+    "edge_hi_cents": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "edge interval high, cents"
+    },
+    "z": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "z-score of wins vs break-even"
+    },
+    "p": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "one-sided p-value",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "pnl_usd": {
+      "type": "number",
+      "description": "realized P&L after fees"
+    },
+    "pnl_per_trade_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "pnl_usd / trades"
+    },
+    "roi": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "P&L / capital spent"
+    },
+    "max_drawdown_usd": {
+      "type": "number",
+      "description": "peak-to-trough of cumulative realized P&L",
+      "minimum": 0
+    },
+    "trades_to_detect": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "settled trades needed to detect trades_to_detect_edge_cents"
+    },
+    "trades_to_detect_edge_cents": {
+      "type": "number",
+      "description": "edge size trades_to_detect refers to, cents"
+    },
+    "verdict": {
+      "type": "string",
+      "description": "sequential test (SPRT) decision",
+      "enum": [
+        "edge",
+        "no_edge",
+        "undecided"
+      ]
+    },
+    "brier": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Brier score of the model's probabilities",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "additionalProperties": true
+}

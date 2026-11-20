@@ -3,7 +3,7 @@ CSV and Google Sheets reporters. Organized portfolio -> strategy -> trade."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from nem.core.config import PortfolioConfig, StrategyConfig
 from nem.core.types import Trade
@@ -24,9 +24,13 @@ class Table:
 class StrategyReport:
     config: StrategyConfig
     stats: StrategyStats
-    trades: list[Trade]
-    open_positions: int
+    trades: list[Trade]  # settled, oldest first
+    open_trades: list[Trade]
     reasons: dict[str, int]
+
+    @property
+    def open_positions(self) -> int:
+        return len(self.open_trades)
 
 
 @dataclass(frozen=True)
@@ -70,7 +74,7 @@ def build_report(
                 config=s,
                 stats=strategy_stats(trades, p_models, target_edge, alpha, power),
                 trades=trades,
-                open_positions=len(store.open_trades(strategy=(portfolio.name, s.name))),
+                open_trades=store.open_trades(strategy=(portfolio.name, s.name)),
                 reasons=store.signal_reasons(portfolio.name, s.name),
             )
         )
@@ -189,50 +193,123 @@ def render_all(reports: Sequence[PortfolioReport]) -> str:
 # --- tables (CSV, Sheets) ---------------------------------------------------------------
 
 
+# Version of the CSV / Sheets / JSON report layout (contract/README.md). Bump the minor
+# for added columns, the major for renamed or removed ones.
+SCHEMA_VERSION = "1.0"
+
+SUMMARY_COLUMNS = [
+    "schema_version", "portfolio", "mode", "as_of", "started_at", "starting_balance_usd",
+    "realized_pnl_usd", "interest_usd", "equity_usd", "return_rate", "open_positions",
+    "open_cost_usd", "interest_apy", "cash_benchmark_usd", "pnl_vs_cash_usd",
+]  # fmt: skip
+STRATEGY_COLUMNS = [
+    "schema_version", "portfolio", "strategy", "series", "status", "trades", "wins", "open",
+    "win_rate", "win_rate_lo", "win_rate_hi", "break_even_rate", "edge_cents", "edge_lo_cents",
+    "edge_hi_cents", "z", "p", "pnl_usd", "pnl_per_trade_usd", "roi", "max_drawdown_usd",
+    "trades_to_detect", "trades_to_detect_edge_cents", "verdict", "brier",
+]  # fmt: skip
+TRADE_COLUMNS = [
+    "schema_version", "portfolio", "strategy", "window_id", "ticker", "side", "contracts",
+    "entry_price_cents", "fee_usd", "cost_per_contract_cents", "mode", "opened_at",
+    "close_time", "settled_at", "result", "pnl_usd",
+]  # fmt: skip
+
+
 def _r(x: float | None, digits: int = 4) -> float | None:
     return None if x is None else round(x, digits)
 
 
+def _c(x: float | None) -> float | None:
+    """Dollars per contract -> cents, to a tenth of a cent (Kalshi's finest tick)."""
+    return None if x is None else round(100 * x, 2)
+
+
+def iso(t: datetime | None) -> str | None:
+    """UTC ISO 8601 with a Z, the contract's one timestamp format."""
+    return None if t is None else t.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _row(columns: list[str], values: dict[str, Cell]) -> list[Cell]:
+    return [values[c] for c in columns]  # KeyError if a column is forgotten
+
+
+def _trade_row(t: Trade) -> list[Cell]:
+    result = "open" if t.won is None else "won" if t.won else "lost"
+    return _row(TRADE_COLUMNS, {
+        "schema_version": SCHEMA_VERSION, "portfolio": t.portfolio, "strategy": t.strategy,
+        "window_id": t.window_id, "ticker": t.ticker, "side": t.side, "contracts": t.qty,
+        "entry_price_cents": _c(t.avg_price), "fee_usd": _r(t.fee, 2),
+        "cost_per_contract_cents": _c(cost_per_contract(t)), "mode": t.mode,
+        "opened_at": iso(t.opened_at), "close_time": iso(t.close_time),
+        "settled_at": iso(t.settled_at), "result": result, "pnl_usd": _r(t.realized_pnl, 2),
+    })  # fmt: skip
+
+
+def stats_fields(st: StrategyStats) -> dict[str, Cell]:
+    """A strategy's statistics in contract units; shared by reports and backtest runs."""
+    return {
+        "trades": st.n, "wins": st.wins, "win_rate": _r(st.win_rate),
+        "win_rate_lo": _r(st.win_rate_ci.low if st.win_rate_ci else None),
+        "win_rate_hi": _r(st.win_rate_ci.high if st.win_rate_ci else None),
+        "break_even_rate": _r(st.breakeven), "edge_cents": _c(st.edge),
+        "edge_lo_cents": _c(st.edge_ci.low if st.edge_ci else None),
+        "edge_hi_cents": _c(st.edge_ci.high if st.edge_ci else None),
+        "z": _r(st.z_vs_breakeven, 3), "p": _r(st.p_value), "pnl_usd": _r(st.pnl, 2),
+        "pnl_per_trade_usd": _r(st.pnl_per_trade), "roi": _r(st.roi),
+        "max_drawdown_usd": _r(st.max_drawdown, 2), "trades_to_detect": st.trades_needed,
+        "trades_to_detect_edge_cents": _c(st.trades_needed_for),
+        "verdict": st.sprt.decision, "brier": _r(st.brier),
+    }  # fmt: skip
+
+
 def tables(report: PortfolioReport) -> list[Table]:
+    """The report as the three flat tables of the data contract (contract/README.md).
+    Units are in the column names; missing values are None, never 0."""
     p = report.portfolio
-    summary = Table(
-        "summary",
-        ["portfolio", "mode", "as_of", "start", "realized", "interest", "equity", "return",
-         "open_positions", "open_cost", "cash_benchmark"],
-        [[p.name, p.mode, report.as_of.isoformat(), report.start, _r(report.realized, 2),
-          _r(report.interest, 2), _r(report.equity, 2), _r(report.total_return),
-          report.open_positions, _r(report.open_cost, 2), _r(report.cash_benchmark, 2)]],
-    )  # fmt: skip
+    gain = report.equity - report.start
+    summary = Table("summary", SUMMARY_COLUMNS, [_row(SUMMARY_COLUMNS, {
+        "schema_version": SCHEMA_VERSION, "portfolio": p.name, "mode": p.mode,
+        "as_of": iso(report.as_of), "started_at": iso(report.started_at),
+        "starting_balance_usd": report.start, "realized_pnl_usd": _r(report.realized, 2),
+        "interest_usd": _r(report.interest, 2), "equity_usd": _r(report.equity, 2),
+        "return_rate": _r(report.total_return), "open_positions": report.open_positions,
+        "open_cost_usd": _r(report.open_cost, 2), "interest_apy": p.interest_apy,
+        "cash_benchmark_usd": _r(report.cash_benchmark, 2),
+        "pnl_vs_cash_usd": None if report.cash_benchmark is None
+        else _r(gain - report.cash_benchmark, 2),
+    })])  # fmt: skip
     strategy_rows: list[list[Cell]] = []
     trade_rows: list[list[Cell]] = []
     for sr in report.strategies:
-        st = sr.stats
-        strategy_rows.append(
-            [p.name, sr.config.name, sr.config.series, sr.config.status, st.n, st.wins,
-             _r(st.win_rate), _r(st.win_rate_ci.low if st.win_rate_ci else None),
-             _r(st.win_rate_ci.high if st.win_rate_ci else None), _r(st.breakeven), _r(st.edge),
-             _r(st.z_vs_breakeven, 3), _r(st.p_value), _r(st.pnl, 2), _r(st.roi),
-             _r(st.max_drawdown, 2), st.trades_needed, st.sprt.decision, _r(st.brier),
-             sr.open_positions]
-        )  # fmt: skip
-        for t in sr.trades:
-            trade_rows.append(
-                [p.name, t.strategy, t.window_id, t.ticker, t.side, t.qty, _r(t.avg_price),
-                 _r(t.fee, 2), _r(cost_per_contract(t)), t.mode, t.opened_at.isoformat(),
-                 t.settled_at.isoformat() if t.settled_at else None,
-                 None if t.won is None else int(t.won), _r(t.realized_pnl, 2)]
-            )  # fmt: skip
-    strategies = Table(
-        "strategies",
-        ["portfolio", "strategy", "series", "status", "trades", "wins", "win_rate",
-         "win_rate_low", "win_rate_high", "breakeven", "edge_per_contract", "z_vs_breakeven",
-         "p_value", "pnl", "roi", "max_drawdown", "trades_needed", "sprt", "brier", "open"],
-        strategy_rows,
-    )  # fmt: skip
-    trades = Table(
-        "trades",
-        ["portfolio", "strategy", "window_id", "ticker", "side", "qty", "avg_price", "fee",
-         "cost_per_contract", "mode", "opened_at", "settled_at", "won", "pnl"],
-        trade_rows,
-    )  # fmt: skip
-    return [summary, strategies, trades]
+        strategy_rows.append(_row(STRATEGY_COLUMNS, {
+            "schema_version": SCHEMA_VERSION, "portfolio": p.name, "strategy": sr.config.name,
+            "series": sr.config.series, "status": sr.config.status, "open": sr.open_positions,
+            **stats_fields(sr.stats),
+        }))  # fmt: skip
+        trade_rows += [_trade_row(t) for t in [*sr.trades, *sr.open_trades]]
+    return [
+        summary,
+        Table("strategies", STRATEGY_COLUMNS, strategy_rows),
+        Table("trades", TRADE_COLUMNS, trade_rows),
+    ]
+
+
+def report_data(report: PortfolioReport) -> dict[str, object]:
+    """`nem summary --json`: the summary and strategy tables as objects, plus each
+    strategy's skip reasons and calibration (contract/schema/summary_report.schema.json)."""
+    summary, strategies, _ = tables(report)
+    rows: list[dict[str, object]] = [
+        dict(zip(strategies.columns, r, strict=True)) for r in strategies.rows
+    ]
+    for row, sr in zip(rows, report.strategies, strict=True):
+        row["signal_reasons"] = dict(sorted(sr.reasons.items()))
+        row["calibration"] = [
+            {"lo_rate": b.low, "hi_rate": b.high, "n": b.n,
+             "predicted_rate": _r(b.predicted), "observed_rate": _r(b.actual)}
+            for b in sr.stats.calibration
+        ]  # fmt: skip
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "summary": dict(zip(summary.columns, summary.rows[0], strict=True)),
+        "strategies": rows,
+    }

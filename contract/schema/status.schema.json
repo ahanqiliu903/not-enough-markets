@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "status.schema.json",
+  "title": "nem status --json",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "as_of",
+    "healthy",
+    "processes",
+    "halts",
+    "strategies"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "report layout version; the app accepts major 1"
+    },
+    "as_of": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "UTC ISO 8601 with Z"
+    },
+    "healthy": {
+      "type": "boolean",
+      "description": "every expected process is ok or failing (alive)"
+    },
+    "processes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "state",
+          "last_heartbeat_at",
+          "detail",
+          "expected"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "failing",
+              "stale",
+              "never"
+            ]
+          },
+          "last_heartbeat_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "halts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "scope",
+          "reason",
+          "since"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "'*', PORTFOLIO or PORTFOLIO/STRATEGY"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "since": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+            "description": "UTC ISO 8601 with Z"
+          }
+        }
+      }
+    },
+    "strategies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "portfolio",
+          "strategy",
+          "series",
+          "status",
+          "halted_by",
+          "open",
+          "settled",
+          "last_signal_at"
+        ],
+        "properties": {
+          "portfolio": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "series": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "paused",
+              "retired"
+            ]
+          },
+          "halted_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open": {
+            "type": "integer"
+          },
+          "settled": {
+            "type": "integer"
+          },
+          "last_signal_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+          }
+        }
+      }
+    }
+  }
+}
