@@ -40,6 +40,10 @@ are.
    trades it will take to detect a 2c edge (often 1,000+ near 90c).
 7. **Backtest only to reject** (`uv run nem replay --data data/nem.db`) when recorded data
    exists. A backtest that looks good is not evidence; one that loses clearly is.
+   For starting settings use `uv run nem suggest PORTFOLIO STRATEGY --data data/nem.db
+   --grid PATH=V1,V2,...` (one or two settings, a handful of values each). Quote its
+   status, train and test trade counts to the user; never tune a grid until it says
+   `suggested`.
 8. **Paper trade**: `uv run nem run` (or the systemd service on a server, see
    [deploy/RUNBOOK.md](deploy/RUNBOOK.md)). Read results with `uv run nem summary`.
 9. **Report honestly**: quote the verdict and sample size from `nem summary`. "Undecided
@@ -113,6 +117,7 @@ uv run nem strategy add PORTFOLIO NAME --series KXBTC15M   # appends a template 
 uv run nem validate           # every portfolio file and plugin
 uv run nem run --once         # one live paper tick (smoke test)
 uv run nem run                # paper-trade continuously (records data too)
+uv run nem suggest PORTFOLIO STRATEGY --data data/nem.db --grid signal.threshold=0.88,0.9,0.92
 uv run nem summary            # statistics per strategy
 uv run nem status             # process health, halts
 uv run nem halt SCOPE --reason "..." / uv run nem resume SCOPE

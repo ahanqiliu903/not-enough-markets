@@ -124,6 +124,44 @@ def test_replay_and_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         assert store.last_heartbeat("reporter") is not None
 
 
+def test_suggest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from nem.core.config import load_portfolio
+    from nem.store import Store
+
+    from engine_helpers import settle, window
+
+    d = tmp_path / "portfolios"
+    run_cli("portfolio", "new", "research", "--dir", str(d))
+    run_cli("strategy", "add", "research", "btc", "--series", "KXBTC15M", "--dir", str(d))
+    data = tmp_path / "data.db"
+    start = datetime(2026, 10, 7, 12, 0, tzinfo=UTC)
+    with Store(data) as store:
+        for i in range(8):
+            w = window(start + timedelta(minutes=15 * i), every=timedelta(minutes=1))
+            store.insert_snapshots(w)
+            store.record_settlement(settle(w, "yes"))
+    capsys.readouterr()
+    args = ["suggest", "research", "btc", "--data", str(data), "--dir", str(d)]
+    grid = ["--grid", "signal.threshold=0.85,0.9,0.95", "--min-trades", "2"]
+    assert run_cli(*args, *grid) == 0
+    out = capsys.readouterr().out
+    assert "Suggestion: suggested starting settings" in out
+    assert "- name: btc_suggested" in out
+    assert run_cli(*args, *grid, "--write") == 0
+    assert "btc_suggested" in [s.name for s in load_portfolio(d / "research.yaml").strategies]
+
+    assert run_cli(*args, "--grid", "signal.nope=1,2") == 1
+    assert "no 'signal.nope'" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        run_cli(*args, "--grid", "signal.threshold")  # no values
+    with pytest.raises(SystemExit, match="only once"):
+        run_cli(*args, "--grid", "signal.threshold=0.9", "--grid", "signal.threshold=0.8")
+    with pytest.raises(SystemExit, match="no strategy"):
+        run_cli("suggest", "research", "eth", "--data", str(data), "--dir", str(d), *grid)
+
+
 def test_report_loop_picks_up_portfolio_edits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

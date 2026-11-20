@@ -91,14 +91,14 @@ strategies:
 
 Positions are held to settlement for now. Exits before settlement (stop-loss, take-profit) are planned as a later plugin kind.
 
-## Planned workflow
+## Workflow
 
 1. Write the strategy hypothesis in plain English.
 2. Fit its constraints into a portfolio YAML config.
 3. Set up the required data pipelines.
    - If data needs to be collected before backtesting, set up logging and schedules to do so.
-4. Run a backtest (**not** a validation).
-5. For strategies that weren't rejected, get suggested starting settings (e.g. entry threshold, time in window, sizing).
+4. Run a backtest (**not** a validation): `nem replay`.
+5. For strategies that weren't rejected, get suggested starting settings (e.g. entry threshold, time in window, sizing): `nem suggest`.
    - A small parameter sweep over recorded data, tuned on one period and checked on a later one it never saw.
    - Suggests the middle of a stable region of good settings rather than the single best point, and shows sample sizes, so you don't start paper trading on a lucky fit.
 6. Run paper trading with those settings.
@@ -129,7 +129,7 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 | ✅ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
 | ✅ | **M5 24/7 operation** | systemd services and runbook, one process for trading + recording, config hot-reload, `nem status` / `nem halt` / `nem resume` |
 | ✅ | **M6 External feeds** | Coinbase spot and NWS forecast feeds, recorded by `known_at`; market strikes recorded with snapshots; `feed_agrees` and `feed_threshold` gates |
-| ⬜ | **M7 Backtest & suggested settings** | Replay recorded market and feed data through the same loop to filter out losers; parameter sweeps with held-out validation to suggest starting settings for paper trading |
+| ✅ | **M7 Backtest & suggested settings** | `nem replay` over recorded market and feed data through the same loop; `nem suggest` sweeps a small grid in one pass, picks a stable region on the earlier data, and checks it on later data it never saw |
 | ⬜ | **M8 Live trading** | Live broker on Kalshi (demo first), risk manager, budgets across live portfolios |
 | ⬜ | **M9 Docs** | Lessons from running live, "write a signal / feed" guides, a worked case study |
 
@@ -162,6 +162,21 @@ Which series to trade: [docs/kalshi-tickers.txt](docs/kalshi-tickers.txt) lists 
 `uv run nem help` lists every command with its options; `uv run nem help run` shows one in detail.
 
 More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
+
+### Suggested starting settings
+
+Once you've recorded data (weeks, not hours), sweep a few settings of a strategy:
+
+```bash
+uv run nem suggest paper fav90 --data data/nem.db \
+  --grid signal.threshold=0.86,0.88,0.90,0.92 --grid gates.0.value=0.94,0.96,0.98
+```
+
+- Each `--grid` is a setting (a dotted path into the strategy, list items by position) and the values to try. Keep it to one or two settings with a handful of values.
+- The data is split in time: settings are chosen on the earliest 70% (`--holdout 0.3`) and only checked on the rest, never chosen from it.
+- The choice favors a broad region of decent settings over the single best cell, shrinks small samples toward zero edge, and treats variants with fewer than `--min-trades` (30) trades as unknown.
+- The result is `suggested`, `rejected` (nothing looked profitable, or it clearly lost on the later data) or `insufficient` (not enough trades). It prints a train vs test table and the grid.
+- `--write` appends the suggestion as `<strategy>_suggested` to the portfolio file, next to the original, so both paper-trade side by side.
 
 ## Reading the statistics
 

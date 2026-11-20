@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from nem import __version__
 
 if TYPE_CHECKING:
+    from nem.backtest.types import Grid, ParamValue
     from nem.core.config import PortfolioConfig
     from nem.stats.report import PortfolioReport
     from nem.store import Store
@@ -28,12 +29,28 @@ def _when(s: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
+def _grid_arg(s: str) -> "tuple[str, list[ParamValue]]":
+    from nem.core.config import load_yaml
+
+    path, sep, raw = s.partition("=")
+    if not sep or not path.strip() or not raw.strip():
+        raise argparse.ArgumentTypeError(f"{s!r}: expected PATH=V1,V2,...")
+    values: list[ParamValue] = []
+    for v in raw.split(","):
+        value = load_yaml(v.strip())  # YAML scalars: 0.9, 3, true, null, 2m
+        if not isinstance(value, float | int | str | bool | None):
+            raise argparse.ArgumentTypeError(f"{s!r}: {v!r} is not a single value")
+        values.append(value)
+    return path.strip(), values
+
+
 # Commands in the order `nem help` shows them.
 HELP_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Getting started", ("init", "demo")),
     ("Portfolios and strategies", ("portfolio new", "portfolio list", "portfolio show",
                                    "strategy add", "validate")),
-    ("Paper trading", ("run", "replay")),
+    ("Backtest", ("replay", "suggest")),
+    ("Paper trading", ("run",)),
     ("Results", ("summary", "report")),
     ("Operations (24/7)", ("status", "halt", "resume")),
     ("Market data", ("record", "export")),
@@ -147,6 +164,26 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
     rep.add_argument("--out", type=Path, help="results database (default: temporary)")
     rep.add_argument("--from", dest="start", type=_when, help="ISO time, e.g. 2026-10-08T18:00")
     rep.add_argument("--to", dest="end", type=_when, help="ISO time (exclusive)")
+
+    sug = with_dir(cmds.add(
+        sub, "suggest", "sweep a few settings on recorded data; suggest, check on later data"
+    ))  # fmt: skip
+    sug.add_argument("portfolio", help="portfolio holding the base strategy")
+    sug.add_argument("strategy", help="strategy whose settings to sweep")
+    sug.add_argument("--data", type=Path, required=True, help="database recorded by nem run/record")
+    sug.add_argument(
+        "--grid", type=_grid_arg, action="append", required=True, metavar="PATH=V1,V2,...",
+        help="setting and values to try (repeatable), e.g. signal.threshold=0.88,0.90,0.92",
+    )  # fmt: skip
+    sug.add_argument(
+        "--holdout", type=float, default=0.3, help="latest share of the data kept for the check"
+    )
+    sug.add_argument(
+        "--min-trades", type=int, default=30, help="fewer trades than this counts as unknown"
+    )
+    sug.add_argument(
+        "--write", action="store_true", help="append the suggestion to the portfolio file"
+    )
 
     demo = cmds.add(sub, "demo", "replay the bundled sample data with the example portfolios")
     demo.add_argument("--data", type=Path, default=DEMO_DATA, help="recorded fixture (.jsonl.gz)")
@@ -430,6 +467,45 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_suggest(args: argparse.Namespace) -> int:
+    from nem.backtest.suggest import render_suggestion, strategy_yaml, suggest
+    from nem.backtest.sweep import run_sweep, split
+    from nem.manage import append_strategy, portfolio_path
+    from nem.store import Store
+
+    pairs: list[tuple[str, list[ParamValue]]] = args.grid
+    grid: Grid = dict(pairs)
+    if len(grid) != len(pairs):
+        raise SystemExit("each --grid setting may appear only once")
+    base = next((p for p in _load(args.dir) if p.name == args.portfolio), None)
+    if base is None:
+        raise SystemExit(f"no portfolio {args.portfolio!r} in {args.dir}/")
+    try:
+        strategy = base.strategy(args.strategy)
+    except KeyError:
+        raise SystemExit(f"{base.name} has no strategy {args.strategy!r}") from None
+    # every variant logs every fill; the summary below is what matters
+    logging.getLogger("nem.engine").setLevel(logging.WARNING)
+    with Store(args.data) as data:
+        train, test = split(data, [strategy.series], args.holdout)
+        print(f"train {train.start:%Y-%m-%d %H:%M} to {train.end:%Y-%m-%d %H:%M} UTC, "
+              f"test {test.start:%Y-%m-%d %H:%M} to {test.end:%Y-%m-%d %H:%M} UTC")  # fmt: skip
+        results = run_sweep(data, base, args.strategy, grid, [train, test])
+    s = suggest(grid, results[train], results[test], min_trades=args.min_trades)
+    print(render_suggestion(s, grid))
+    if s.status != "suggested":
+        return 0
+    block = strategy_yaml(s, args.strategy)
+    if args.write:
+        path = append_strategy(args.dir, base.name, block)
+        print(f"\nAdded {args.strategy}_suggested to {path}; `nem run` paper-trades it.")
+    else:
+        where = portfolio_path(args.dir, base.name)
+        print(f"\nTo paper-trade it, rerun with --write, or add this under strategies: in {where}")
+        print(block)
+    return 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     import tempfile
 
@@ -554,6 +630,7 @@ COMMANDS = {
     "validate": cmd_validate,
     "run": cmd_run,
     "replay": cmd_replay,
+    "suggest": cmd_suggest,
     "summary": cmd_summary,
     "report": cmd_report,
     "status": cmd_status,
@@ -566,6 +643,7 @@ COMMANDS = {
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from nem.backtest.sweep import SweepError
     from nem.core.config import ConfigError
     from nem.engine.runtime import BuildError
 
@@ -583,7 +661,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = COMMANDS[args.command]
     try:
         return command(args)
-    except (ConfigError, BuildError) as e:
+    except (ConfigError, BuildError, SweepError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
 

@@ -45,7 +45,9 @@ STRATEGY_TEMPLATE = """\
     gates:
       - {{type: max_entry_price, value: 0.95}}
     sizing: {{type: fixed, contracts: 1}}
-    risk: {{max_open_positions: 1, stop_if_losing_after: 50}}
+    # Paper money has nothing to protect: leave the kill rule off until `nem summary`
+    # says you have enough trades (trades_needed) to judge the strategy.
+    risk: {{max_open_positions: 1, stop_if_losing_after: null}}
 """
 
 
@@ -72,6 +74,11 @@ def new_portfolio(directory: Path, name: str, balance: float) -> Path:
 
 
 def add_strategy(directory: Path, portfolio: str, name: str, series: str) -> Path:
+    return append_strategy(directory, portfolio, STRATEGY_TEMPLATE.format(name=name, series=series))
+
+
+def append_strategy(directory: Path, portfolio: str, block: str) -> Path:
+    """Append a strategy block (YAML text, a `strategies:` list item) to a portfolio file."""
     path = portfolio_path(directory, portfolio)
     if not path.exists():
         raise ConfigError(f"{path} not found; create it with `nem portfolio new {portfolio}`")
@@ -80,7 +87,7 @@ def add_strategy(directory: Path, portfolio: str, name: str, series: str) -> Pat
     if not top_level or top_level[-1] != "strategies":
         raise ConfigError(f"{path}: `strategies:` must be the last top-level key to append")
     text = re.sub(r"^strategies:\s*\[\]\s*$", "strategies:", text, flags=re.MULTILINE)
-    text = text.rstrip("\n") + "\n" + STRATEGY_TEMPLATE.format(name=name, series=series)
+    text = text.rstrip("\n") + "\n" + block
     _validate(text, path)
     path.write_text(text)
     return path
