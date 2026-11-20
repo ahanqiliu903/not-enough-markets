@@ -1,0 +1,25 @@
+# Unsigned dev builds (spec Section 2: .dmg for macOS first). Signing/notarization later.
+appId: dev.notenoughmarkets.desk
+productName: NEM Desk
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - "!**/*.map"
+asar: true
+mac:
+  target:
+    - target: dmg
+  category: public.app-category.finance
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+dmg:
+  writeUpdateInfo: false
+linux:
+  target:
+    - AppImage
+  category: Finance
+publish: null
