@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { comboLabel, KEY_PRIORITY, useKeys } from "../lib/keys";
+import { exploreQueryCommand } from "../screens/explore/commands";
 import { useCommandStore, type Command } from "../state/commands";
 import { useNav } from "../state/nav";
 
@@ -30,14 +31,15 @@ function PaletteDialog() {
     };
   }, []);
 
-  const results = useMemo(
-    () =>
-      fuzzyFilter([...commands.values()], query, (c) => `${c.group} ${c.title} ${c.keywords ?? ""}`).slice(
-        0,
-        MAX_RESULTS,
-      ),
-    [commands, query],
-  );
+  const results = useMemo(() => {
+    const found = fuzzyFilter([...commands.values()], query, (c) => `${c.group} ${c.title} ${c.keywords ?? ""}`);
+    // "explore SERIES" opens any series, not only the seeded ones.
+    const typed = exploreQueryCommand(query);
+    const exact = typed !== null ? found.find((c) => c.title.toLowerCase() === typed.title.toLowerCase()) : undefined;
+    const first = exact ?? typed;
+    const all = first !== null ? [first, ...found.filter((c) => c !== first)] : found;
+    return all.slice(0, MAX_RESULTS);
+  }, [commands, query]);
   const activeIndex = Math.min(active, Math.max(0, results.length - 1));
 
   const run = (c: Command | undefined) => {

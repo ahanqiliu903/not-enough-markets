@@ -1,0 +1,38 @@
+{
+ "series": {
+  "additional_prohibitions": [
+   "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+   "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+  ],
+  "categories": [
+   "Climate and Weather"
+  ],
+  "category": "Climate and Weather",
+  "contract_terms_url": "https://assets.kalshi.com/contract_terms/GLOBALTEMPERATURE.pdf",
+  "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/GLOBALTEMPERATURE.pdf",
+  "exchange_index": 0,
+  "fee_multiplier": 1,
+  "fee_type": "quadratic",
+  "frequency": "daily",
+  "last_updated_ts": "2026-11-15T23:22:04.01983Z",
+  "product_metadata": {
+   "important_info": {
+    "id": "GLOBALTEMPERATURE-bulk-2026-09-02",
+    "markdown": "**Important information:** If it is determined in the sole discretion of the Exchange that there is a material error in the initial non-preliminary publication, Expiration may be held until the publication of a non-materially-erroneous data revision or until the Expiration Date, whichever comes first. If no data is available at the end of this period, all markets will resolve to the last fair price determined by Kalshi. Please note, a status of \"Final\" on weather.com/kalshi is provided for convenience only, and does not guarantee data to be error-free and thus exempt from the above.",
+    "message": "",
+    "title": ""
+   }
+  },
+  "settlement_sources": [
+   {
+    "name": "The Weather Company",
+    "url": "https://weather.com/kalshi"
+   }
+  ],
+  "tags": [
+   "Daily temperature"
+  ],
+  "ticker": "KXHIGHNY",
+  "title": "Highest temperature in NYC"
+ }
+}

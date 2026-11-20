@@ -2,8 +2,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Suspense, useEffect, useMemo } from "react";
 import { PaneTitle } from "../components/PaneTitle";
 import { EmptyState } from "../components/states";
+import { useDataSync } from "../data/hooks";
 import { comboLabel, KEY_PRIORITY, useKeys, type KeyBindings } from "../lib/keys";
 import { routeById, visibleRoutes } from "../routes";
+import { exploreSeedCommands } from "../screens/explore/commands";
 import { useRegisterCommands, type Command } from "../state/commands";
 import { useNav } from "../state/nav";
 import { useSettings } from "../state/settings";
@@ -20,6 +22,8 @@ function focusScreenFilter(): boolean {
   el.select();
   return true;
 }
+
+const EXPLORE_COMMANDS = exploreSeedCommands();
 
 export function Shell() {
   const screen = useNav((s) => s.screen);
@@ -71,6 +75,8 @@ export function Shell() {
     [routes, navigate, refresh, pixelAccents, setPixelAccents],
   );
   useRegisterCommands(commands);
+  useDataSync();
+  useRegisterCommands(EXPLORE_COMMANDS);
 
   const bindings: KeyBindings = {
     "mod+k": () => setPaletteOpen(true),

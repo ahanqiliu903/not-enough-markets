@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { formatAge } from "../components/states";
+import { useNow, useSnapshot } from "../data/hooks";
 import { nem, queryKeys } from "../lib/api";
 import { isMac } from "../lib/keys";
 
 /**
- * Bottom status bar. Data source/age and engine heartbeat are placeholders until the data
- * layer (DESK-003) provides them; they say so instead of showing made-up values.
+ * Bottom status bar: the active source and the age of its newest `as_of`. The engine
+ * heartbeat stays a placeholder until the Status screen (DESK-014) and says so.
  */
 export function StatusBar() {
   const version = useQuery({
@@ -12,10 +14,16 @@ export function StatusBar() {
     queryFn: () => nem().appVersion(),
     staleTime: Infinity,
   });
+  const snap = useSnapshot();
+  const now = useNow();
+  const ok = snap.data?.state === "ok" ? snap.data.snapshot : null;
+  const sourceLabel =
+    ok !== null ? ok.source.label : snap.data?.state === "error" ? `${snap.data.source.label} (unavailable)` : "none";
+  const age = ok?.newestAsOf != null ? formatAge(now.getTime() - Date.parse(ok.newestAsOf)) : "-";
   return (
     <footer className="status-bar" aria-label="Status bar">
       <span className="status-item" data-testid="status-source">
-        <span className="dim">source</span> none <span className="dim">age</span> -
+        <span className="dim">source</span> {sourceLabel} <span className="dim">age</span> {age}
       </span>
       <span className="status-item" data-testid="status-heartbeat">
         <span className="dim">engine</span> no heartbeat

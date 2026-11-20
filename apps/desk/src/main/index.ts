@@ -5,6 +5,12 @@ import { colors } from "../renderer/theme";
 import { registerIpc } from "./ipc";
 
 const devServerUrl = process.env["ELECTRON_RENDERER_URL"];
+
+// e2e tests run against a throwaway profile (source list etc.); never in a packaged build.
+const userDataOverride = process.env["NEM_DESK_USER_DATA"];
+if (userDataOverride !== undefined && userDataOverride !== "" && !app.isPackaged) {
+  app.setPath("userData", userDataOverride);
+}
 const rendererFile = join(import.meta.dirname, "../renderer/index.html");
 const rendererFileUrl = pathToFileURL(rendererFile).href;
 

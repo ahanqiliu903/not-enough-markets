@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 
@@ -17,6 +18,8 @@ function launchEnv(): Record<string, string> {
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined && k !== "ELECTRON_RUN_AS_NODE") env[k] = v;
   }
+  // A fresh profile, so first-run state (no data source) doesn't depend on this machine.
+  env["NEM_DESK_USER_DATA"] = mkdtempSync(join(tmpdir(), "nem-desk-e2e-"));
   return env;
 }
 
@@ -54,7 +57,7 @@ test("renderer is isolated: no Node, only the allowlisted API", async () => {
   }));
   expect(probe.require).toBe("undefined");
   expect(probe.process).toBe("undefined");
-  expect(probe.nem).toEqual(["appVersion", "listSources", "platform"]);
+  expect(probe.nem).toEqual(["appVersion", "data", "kalshi", "listSources", "platform", "sources"]);
   expect(await page.evaluate(() => window.nem?.listSources())).toEqual([]);
 });
 

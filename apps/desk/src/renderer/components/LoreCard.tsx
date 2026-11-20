@@ -15,11 +15,15 @@ export function LoreCard({
   title,
   tier,
   stats,
+  body,
   children,
 }: {
   title: string;
-  tier: Tier;
+  /** Verdict tier colors the title. Omit for non-verdict cards (e.g. market rules): amber. */
+  tier?: Tier;
   stats: readonly LoreStat[];
+  /** Optional free text under the stat lines (e.g. settlement rules). */
+  body?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -40,7 +44,10 @@ export function LoreCard({
       </span>
       {open && (
         <span role="tooltip" id={id} className="lore-card pixel-border">
-          <span className="lore-title pixel-font" style={{ color: TIER_COLOR_VAR[tier] }}>
+          <span
+            className="lore-title pixel-font"
+            style={{ color: tier !== undefined ? TIER_COLOR_VAR[tier] : "var(--amber)" }}
+          >
             {title}
           </span>
           {stats.map((s) => (
@@ -49,6 +56,7 @@ export function LoreCard({
               <span className="num">{s.value}</span>
             </span>
           ))}
+          {body !== undefined && <span className="lore-body">{body}</span>}
         </span>
       )}
     </span>

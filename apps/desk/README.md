@@ -4,8 +4,9 @@ A read-only desktop app for looking at NotEnoughMarkets results: portfolios, str
 verdicts, trades, market data and engine status. It reads files the engine exports and
 never computes statistics, places orders, or holds Kalshi keys.
 
-Status: app shell only (DESK-001, DESK-002, DESK-005). Screens show empty states until the
-data layer (DESK-003) and the screen tickets land.
+Status: shell (DESK-001/002/005), folder data layer and sources with file watching
+(DESK-003/004), and the Portfolios, Strategy, Trades and Compare screens (DESK-006..009).
+Market, Backtests and Status still show empty states.
 
 ## Run
 
@@ -39,7 +40,9 @@ The `.dmg` is unsigned: on first open, right-click the app and choose Open.
 
 Electron 45, electron-vite 6 (Vite 8) for the three bundles, React 19, TypeScript 6,
 TanStack Query 5 (data from main), Zustand 5 (navigation, settings, command registry),
-electron-builder 26, Vitest 5 + Testing Library, Playwright 1.65. Versions are pinned
+Ajv 8 + csv-parse 7 (main-process readers), TanStack Table 8 + Virtual 3 (trades blotter),
+uPlot 1.6 (P&L curves), electron-builder 26, Vitest 5 + Testing Library, Playwright 1.65.
+Versions are pinned
 exactly in `package.json`.
 
 ## Layout
@@ -47,7 +50,8 @@ exactly in `package.json`.
 ```
 src/
   main/            Electron main process. index.ts (window, security), ipc.ts (handlers).
-                   The data layer (DESK-003) goes here too.
+                   data/ is the data layer: CSV/JSON readers validated against
+                   contract/schema (bundled at build time), sources + watching.
   preload/         index.ts exposes the allowlisted `window.nem` API; api.d.ts types it.
   shared/ipc.ts    IPC channel type map, the channel allowlist, the NemApi interface.
   renderer/
@@ -95,6 +99,33 @@ e2e/               Playwright Electron smoke test.
 
 Channels are read-only. There is no write, order, or key path, and there should never be.
 
+## Explore (Kalshi markets, screen 9)
+
+Cmd/Ctrl+9, or type `explore SERIES` in the command bar. Read-only research on Kalshi's
+**public** market data: no key, no account, no orders.
+
+- **Client in main only** (`src/main/kalshi/`): GET-only, host allowlist
+  `https://api.elections.kalshi.com/trade-api/v2/` (anything else is a `blocked` error),
+  `User-Agent: NEM Desk/<version>`, no auth headers, redirects refused. At most 5 requests/s,
+  retries on 429 / 5xx / network errors with 0.5s, 1s, 2s backoff (Retry-After honored, capped
+  at 10s). Caches: markets, market, order book 5s; series 10 min; the full `/series` list
+  (used by search, ~20 MB) 1 h. Parsing mirrors `src/nem/market/kalshi.py` (dollar strings,
+  0 bid / 1 ask = none, order book bids best-first; asks are the other side's bids at 1 - p).
+- **Channels** `kalshi:searchSeries | series | markets | market | orderbook |
+  copyStrategyCommand`, exposed as `window.nem.kalshi.*`. Errors are values
+  (`{ ok: false, error: { kind } }`, kinds `offline`, `rate_limited`, `upstream`,
+  `not_found`, `bad_request`, `invalid_response`, `blocked`) and render as states. The
+  renderer CSP stays `connect-src 'none'`.
+- **"Start a strategy here"** asks main to put `uv run nem strategy add PORTFOLIO NAME --series S`
+  on the clipboard (Electron `clipboard`), so the renderer keeps every permission denied.
+- **Categories** are a hand-written seed (`screens/explore/catalog.ts`, from
+  `docs/kalshi-tickers.txt`); the Search tab reaches any series.
+- **Test switch:** `NEM_DESK_KALSHI_FIXTURES=<dir>` (unpackaged builds only) serves recorded
+  responses from `<dir>` instead of the network. `e2e/explore.spec.ts` sets it to
+  `e2e/fixtures/kalshi/` (recorded 2026-11-20; file names are listed in
+  `src/main/kalshi/fixtures.ts`). Unit tests also parse the engine's
+  `tests/fixtures/kalshi/*.json`. No test touches the network.
+
 ## Security
 
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webviewTag: false`.
@@ -118,3 +149,26 @@ Channels are read-only. There is no write, order, or key path, and there should 
 - Value flashes last 150ms and are disabled under `prefers-reduced-motion`.
 - The dev-only Kitchen Sink screen (Cmd/Ctrl+K → "Kitchen Sink" in `npm run dev`) shows
   every token, tier badge, icon and the type scale.
+
+## Data sources
+
+A source is a folder of engine output: an `out/` folder or its parent (e.g. `~/nem-cache`
+holding an rsynced `out/` plus optional `summary.json` / `status.json`). Add one in Sources
+and Settings (Cmd/Ctrl+8) or from any empty state. The list lives in the app's userData
+folder (`sources.json`); source folders are only read.
+
+- **Reading** (`src/main/data/`): `csv.ts` coerces cells by the rules in
+  `tests/contract/test_contract.py` and validates each row with Ajv against
+  `contract/schema/*.json`; any other `schema_version` major, a missing column, an invalid
+  row or duplicate rows block that file, and the problem comes back as a `DataError`
+  (file, row, field, message, expected/found version) that screens show with
+  `<SchemaError>`. Nothing is thrown to the renderer.
+- **Trades** stay in main: `data:trades` filters, sorts and pages them (the sorted index is
+  cached, so scrolling is a slice); `data:tradesCsv` returns the matching rows with the
+  engine's own cell text for export; `data:curves` gives cumulative P&L for charts.
+- **Watching**: a recursive `fs.watch` plus a 1 s mtime/size poll; changes reach the
+  renderer as a `data:changed` push and every data query refetches (under 2 s).
+- **Sample data**: in dev, "Load sample data" points at `contract/fixtures/basic`. Packaged
+  builds bundle a copy of `basic/out`, `summary.json` and `status.json` as an
+  extraResource (`<resources>/sample`, see `electron-builder.yml`); `nem.db` is left out.
+- e2e runs against a throwaway profile via `NEM_DESK_USER_DATA` (ignored when packaged).

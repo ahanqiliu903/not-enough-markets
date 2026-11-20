@@ -46,6 +46,12 @@ export const derivedColors = {
   scrim: hexAlpha(colors.bg, 0.72),
 } as const;
 
+/**
+ * Line colors for charts with several strategies (Compare). Deliberately not the tier
+ * colors, which stay reserved for verdicts.
+ */
+export const chartSeriesColors = ["#FFB000", "#4FD1C5", "#C792EA", "#D7DAD9"] as const;
+
 export const fonts = {
   mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
   pixel: '"Silkscreen", "JetBrains Mono", ui-monospace, monospace',

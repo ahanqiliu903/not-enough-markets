@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { IpcChannel, IpcRequest, IpcResponse, NemApi } from "@shared/ipc";
-import { isIpcChannel } from "@shared/ipc";
+import { DATA_CHANGED_EVENT, isIpcChannel } from "@shared/ipc";
 
 function invoke<C extends IpcChannel>(channel: C, request?: IpcRequest<C>): Promise<IpcResponse<C>> {
   if (!isIpcChannel(channel)) {
@@ -12,6 +12,36 @@ function invoke<C extends IpcChannel>(channel: C, request?: IpcRequest<C>): Prom
 const api: NemApi = {
   appVersion: () => invoke("app:version"),
   listSources: () => invoke("data:listSources"),
+  data: {
+    snapshot: () => invoke("data:snapshot"),
+    trades: (query) => invoke("data:trades", query),
+    tradesCsv: (filter) => invoke("data:tradesCsv", filter),
+    curves: (keys) => invoke("data:curves", { keys }),
+    onChanged: (callback) => {
+      const listener = (_e: unknown, payload: { revision?: unknown }) => {
+        if (typeof payload.revision === "number") callback(payload.revision);
+      };
+      ipcRenderer.on(DATA_CHANGED_EVENT, listener);
+      return () => {
+        ipcRenderer.removeListener(DATA_CHANGED_EVENT, listener);
+      };
+    },
+  },
+  sources: {
+    list: () => invoke("sources:list"),
+    addFolder: (path) => invoke("sources:addFolder", path !== undefined ? { path } : {}),
+    addSample: () => invoke("sources:addSample"),
+    remove: (id) => invoke("sources:remove", { id }),
+    setActive: (id) => invoke("sources:setActive", { id }),
+  },
+  kalshi: {
+    searchSeries: (query) => invoke("kalshi:searchSeries", query),
+    series: (ticker) => invoke("kalshi:series", ticker),
+    markets: (series) => invoke("kalshi:markets", series),
+    market: (ticker) => invoke("kalshi:market", ticker),
+    orderbook: (ticker) => invoke("kalshi:orderbook", ticker),
+    copyStrategyCommand: (series) => invoke("kalshi:copyStrategyCommand", series),
+  },
   platform: process.platform,
 };
 

@@ -5,7 +5,7 @@ import type { RouteFlags } from "./state/nav";
 /**
  * The one route table. To add or replace a screen, edit only its folder under
  * `screens/<id>/` (default export = the screen component) and, for a new screen, one
- * entry here. Hotkeys 1-8 follow spec Section 5.
+ * entry here. Hotkeys 1-8 follow spec Section 5; 9 is Explore (DESK-024).
  */
 export type ScreenId =
   | "portfolios"
@@ -16,6 +16,7 @@ export type ScreenId =
   | "backtests"
   | "status"
   | "settings"
+  | "explore"
   | "kitchen-sink";
 
 export interface RouteDef {
@@ -93,6 +94,14 @@ export const routes: readonly RouteDef[] = [
     hotkey: 8,
     keywords: "data source preferences font pixel accents",
     component: lazy(() => import("./screens/settings")),
+  },
+  {
+    id: "explore",
+    title: "Explore",
+    hotkey: 9,
+    icon: "explore",
+    keywords: "kalshi markets series order book browse research",
+    component: lazy(() => import("./screens/explore")),
   },
   {
     id: "kitchen-sink",

@@ -9,6 +9,15 @@ files:
   - package.json
   - "!**/*.map"
 asar: true
+# "Sample data" source (DESK-004): a copy of the contract's basic fixture, without nem.db.
+# Main reads it from <resources>/sample in a packaged build.
+extraResources:
+  - from: ../../contract/fixtures/basic/out
+    to: sample/out
+  - from: ../../contract/fixtures/basic/summary.json
+    to: sample/summary.json
+  - from: ../../contract/fixtures/basic/status.json
+    to: sample/status.json
 mac:
   target:
     - target: dmg

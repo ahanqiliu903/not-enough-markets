@@ -1,0 +1,41 @@
+{
+ "series": {
+  "additional_prohibitions": [
+   "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+   "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+  ],
+  "categories": [
+   "Crypto"
+  ],
+  "category": "Crypto",
+  "contract_terms_url": "https://assets.kalshi.com/contract_terms/CRYPTO.pdf",
+  "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/CRYPTO.pdf",
+  "exchange_index": 2,
+  "fee_multiplier": 1,
+  "fee_type": "quadratic",
+  "frequency": "fifteen_min",
+  "last_updated_ts": "2026-11-13T01:38:05.898217Z",
+  "product_metadata": {
+   "important_info": {
+    "id": "CRYPTO15M-bulk-2026-04-20",
+    "markdown": "**Important information:** The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI). At the last minute before expiration, 60 RTI prices are collected. The official and final value is the average of these prices.",
+    "message": "",
+    "title": ""
+   }
+  },
+  "settlement_sources": [
+   {
+    "name": "CF Benchmarks",
+    "url": "https://www.cfbenchmarks.com/"
+   }
+  ],
+  "tags": [
+   "Crypto",
+   "BTC",
+   "15 min",
+   "Bitcoin"
+  ],
+  "ticker": "KXBTC15M",
+  "title": "BTC 15 min"
+ }
+}

@@ -15,12 +15,12 @@ first-open warning is accepted, and auto-update is replaced by an "update availa
 | DESK-001 | Scaffold | ✅ |
 | DESK-002 | Theme tokens and fonts | ✅ |
 | DESK-005 | App shell | ✅ |
-| DESK-003 | Data layer | ⬜ |
-| DESK-004 | Source manager and file watching | ⬜ |
-| DESK-006 | Portfolios screen | ⬜ |
-| DESK-007 | Strategy detail | ⬜ |
-| DESK-008 | Trades blotter | ⬜ |
-| DESK-009 | Compare | ⬜ |
+| DESK-003 | Data layer | ✅ |
+| DESK-004 | Source manager and file watching | ✅ |
+| DESK-006 | Portfolios screen | ✅ |
+| DESK-007 | Strategy detail | ✅ |
+| DESK-008 | Trades blotter | ✅ |
+| DESK-009 | Compare | ✅ |
 | DESK-010 | SQLite reader | ⬜ |
 | DESK-011 | Market and order book screen | ⬜ |
 | DESK-012 | Google Sheets source | ⬜ |
@@ -35,7 +35,7 @@ first-open warning is accepted, and auto-update is replaced by an "update availa
 | DESK-021 | Halt and resume over SSH (deferred) | ⬜ |
 | DESK-022 | Pixel accents pass | ⬜ |
 | DESK-023 | Docs and screenshots | ⬜ |
-| DESK-024 | Explore Kalshi markets | ⬜ |
+| DESK-024 | Explore Kalshi markets | ✅ |
 
 ## Phase 1: local files
 

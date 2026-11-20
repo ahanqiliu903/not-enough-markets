@@ -1,0 +1,327 @@
+{
+ "series": [
+  {
+   "categories": [
+    "Climate and Weather"
+   ],
+   "category": "Climate and Weather",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/GLOBALTEMPERATURE.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/GLOBALTEMPERATURE.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "daily",
+   "last_updated_ts": "2026-11-15T23:22:03.767253Z",
+   "settlement_sources": [
+    {
+     "name": "The Weather Company",
+     "url": "https://weather.com/kalshi"
+    }
+   ],
+   "tags": [
+    "Daily temperature"
+   ],
+   "ticker": "KXHIGHCHI",
+   "title": "Highest temperature in Chicago"
+  },
+  {
+   "categories": [
+    "Crypto"
+   ],
+   "category": "Crypto",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/CRYPTO.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/CRYPTO.pdf",
+   "exchange_index": 2,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "fifteen_min",
+   "last_updated_ts": "2026-11-13T01:38:05.898217Z",
+   "settlement_sources": [
+    {
+     "name": "CF Benchmarks",
+     "url": "https://www.cfbenchmarks.com/"
+    }
+   ],
+   "tags": [
+    "Crypto",
+    "BTC",
+    "15 min",
+    "Bitcoin"
+   ],
+   "ticker": "KXBTC15M",
+   "title": "BTC 15 min"
+  },
+  {
+   "categories": [
+    "Crypto"
+   ],
+   "category": "Crypto",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/CRYPTO.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/CRYPTO.pdf",
+   "exchange_index": 2,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "fifteen_min",
+   "last_updated_ts": "2026-11-13T01:04:30.490733Z",
+   "settlement_sources": [
+    {
+     "name": "CF Benchmarks",
+     "url": "https://www.cfbenchmarks.com/"
+    }
+   ],
+   "tags": [
+    "Crypto",
+    "15 min",
+    "SOL",
+    "Solana"
+   ],
+   "ticker": "KXSOL15M",
+   "title": "SOL 15 min"
+  },
+  {
+   "categories": [
+    "Crypto"
+   ],
+   "category": "Crypto",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/BTC.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/BTC.pdf",
+   "exchange_index": 2,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "hourly",
+   "last_updated_ts": "2026-11-13T01:40:31.21665Z",
+   "settlement_sources": [
+    {
+     "name": "CF Benchmarks",
+     "url": "https://www.cfbenchmarks.com/data/indices/BRTI?ref=blog.cfbenchmarks.com"
+    }
+   ],
+   "tags": [
+    "Crypto",
+    "Hourly",
+    "BTC",
+    "Bitcoin"
+   ],
+   "ticker": "KXBTCD",
+   "title": "Bitcoin price Above/below"
+  },
+  {
+   "categories": [
+    "Crypto"
+   ],
+   "category": "Crypto",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/CRYPTO.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/CRYPTO.pdf",
+   "exchange_index": 2,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "fifteen_min",
+   "last_updated_ts": "2026-11-13T01:20:45.006801Z",
+   "settlement_sources": [
+    {
+     "name": "CF Benchmarks",
+     "url": "https://www.cfbenchmarks.com/"
+    }
+   ],
+   "tags": [
+    "Crypto",
+    "Ethereum",
+    "ETH",
+    "15 min"
+   ],
+   "ticker": "KXETH15M",
+   "title": "ETH 15 min"
+  },
+  {
+   "categories": [
+    "Climate and Weather"
+   ],
+   "category": "Climate and Weather",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/GLOBALTEMPERATURE.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/GLOBALTEMPERATURE.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "daily",
+   "last_updated_ts": "2026-11-15T23:22:04.01983Z",
+   "settlement_sources": [
+    {
+     "name": "The Weather Company",
+     "url": "https://weather.com/kalshi"
+    }
+   ],
+   "tags": [
+    "Daily temperature"
+   ],
+   "ticker": "KXHIGHNY",
+   "title": "Highest temperature in NYC"
+  },
+  {
+   "categories": [
+    "Climate and Weather"
+   ],
+   "category": "Climate and Weather",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/GLOBALTEMPERATURE.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/GLOBALTEMPERATURE.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "daily",
+   "last_updated_ts": "2026-11-15T23:22:03.709924Z",
+   "settlement_sources": [
+    {
+     "name": "The Weather Company",
+     "url": "https://weather.com/kalshi"
+    }
+   ],
+   "tags": [
+    "Daily temperature"
+   ],
+   "ticker": "KXLOWTNYC",
+   "title": "Lowest temperature in NYC"
+  },
+  {
+   "categories": [
+    "Sports"
+   ],
+   "category": "Sports",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/ACHIEVEMENTS.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/ACHIEVEMENTS.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "custom",
+   "last_updated_ts": "2026-11-11T16:24:46.789736Z",
+   "settlement_sources": [
+    {
+     "name": "The Wall Street Journal",
+     "url": "https://www.wsj.com/"
+    },
+    {
+     "name": "ESPN",
+     "url": "https://www.espn.com/"
+    },
+    {
+     "name": "Fox Sports",
+     "url": "https://www.foxsports.com/"
+    },
+    {
+     "name": "AP",
+     "url": "https://apnews.com/"
+    }
+   ],
+   "tags": [
+    "UFC"
+   ],
+   "ticker": "KXUFC",
+   "title": "UFC Weightclass Champion"
+  },
+  {
+   "categories": [
+    "Sports"
+   ],
+   "category": "Sports",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/SOCCERGAMEWIN.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/SOCCERGAMEWIN.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "custom",
+   "last_updated_ts": "2026-11-19T20:59:21.906716Z",
+   "settlement_sources": [
+    {
+     "name": "ESPN",
+     "url": "https://www.espn.com/"
+    },
+    {
+     "name": "Fox Sports",
+     "url": "https://www.foxsports.com/"
+    }
+   ],
+   "tags": [
+    "Soccer"
+   ],
+   "ticker": "KXEFLL11H",
+   "title": "1st Half Winner"
+  },
+  {
+   "categories": [
+    "Sports"
+   ],
+   "category": "Sports",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/WOLYMPICSACHIEVE.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/WOLYMPICSACHIEVE.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "custom",
+   "last_updated_ts": "2026-10-15T08:14:10.229686Z",
+   "settlement_sources": [
+    {
+     "name": "the Winter Olympics 2026",
+     "url": "https://www.olympics.com/en/milano-cortina-2026"
+    }
+   ],
+   "tags": [
+    "Olympics"
+   ],
+   "ticker": "KXWOCURL",
+   "title": "Winter Olympics Curling"
+  },
+  {
+   "categories": [
+    "Entertainment"
+   ],
+   "category": "Entertainment",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/GLOBES.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/GLOBES.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "annual",
+   "last_updated_ts": "2026-10-27T20:55:32.989863Z",
+   "settlement_sources": [
+    {
+     "name": "Golden Globes",
+     "url": "https://goldenglobes.com/"
+    }
+   ],
+   "tags": [
+    "Awards"
+   ],
+   "ticker": "KXGGLSERIESACTR",
+   "title": "Golden Globe for Best Actress in a Limited Series "
+  },
+  {
+   "categories": [
+    "Politics"
+   ],
+   "category": "Politics",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/LAW.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/LAW.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "one_off",
+   "last_updated_ts": "2026-11-19T17:18:21.968293Z",
+   "settlement_sources": [
+    {
+     "name": "Texas Secretary of State",
+     "url": "https://www.sos.texas.gov/elections/laws/2026-november-general-election.shtml"
+    },
+    {
+     "name": "Texas Legislature",
+     "url": "https://capitol.texas.gov"
+    }
+   ],
+   "tags": [
+    "Local",
+    "State laws",
+    "Economy",
+    "Taxes & spending"
+   ],
+   "ticker": "KXTXINCOMETAX",
+   "title": "Will Texas establish a state income tax?"
+  }
+ ]
+}
