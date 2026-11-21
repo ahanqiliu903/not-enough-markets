@@ -12,11 +12,13 @@
     "build": "electron-vite build",
     "dist": "electron-vite build && electron-builder --mac --publish never",
     "dist:win": "electron-vite build && electron-builder --win --publish never",
-    "lint": "eslint . && node scripts/check-no-hex.mjs",
+    "lint": "eslint . && node scripts/check-no-hex.mjs && node scripts/check-assets.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "test": "vitest run",
     "e2e": "electron-vite build && playwright test",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "icon": "node scripts/make-icon.mjs",
+    "screenshots": "electron-vite build && NEM_SCREENSHOT_DIR=docs/screenshots playwright test e2e/screenshots.spec.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.106.1",

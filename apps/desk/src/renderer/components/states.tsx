@@ -1,9 +1,20 @@
 import type { ReactNode } from "react";
+import { PixelIcon } from "./PixelIcon";
 
 /**
  * Shared empty / stale / schema-error states (spec Section 5). Every screen uses these so
  * the user always learns why there is nothing to show and how to fix it.
  */
+
+/** Heading of a state box with its pixel icon (empty, stale or error). */
+export function StateTitle({ kind, children }: { kind: "empty" | "stale" | "error"; children: ReactNode }) {
+  return (
+    <h2 className="state-title">
+      <PixelIcon name={kind} />
+      <span>{children}</span>
+    </h2>
+  );
+}
 
 export function EmptyState({
   title,
@@ -20,7 +31,7 @@ export function EmptyState({
 }) {
   return (
     <section className="state state-empty" role="status" aria-label={title}>
-      <h2 className="state-title">{title}</h2>
+      <StateTitle kind="empty">{title}</StateTitle>
       <p>{reason}</p>
       {commands.length > 0 && (
         <>
@@ -75,6 +86,7 @@ export function StaleBanner({
   const age = formatAge(now.getTime() - newest.getTime());
   return (
     <div className="banner banner-stale" role="alert">
+      <PixelIcon name="stale" />
       <strong>STALE</strong> Newest data{source !== undefined ? ` from ${source}` : ""} is {age}{" "}
       old (newest {newest.toISOString()}; threshold {formatAge(thresholdMs)}). Numbers below may
       not reflect the engine now.
@@ -97,7 +109,7 @@ export function SchemaError({
 }) {
   return (
     <section className="state state-error" role="alert" aria-label="Schema error">
-      <h2 className="state-title">Schema error</h2>
+      <StateTitle kind="error">Schema error</StateTitle>
       <dl className="kv">
         <dt>File</dt>
         <dd>

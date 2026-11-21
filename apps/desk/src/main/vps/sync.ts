@@ -84,8 +84,12 @@ export function validateConfig(raw: unknown): { ok: true; config: VpsConfig } | 
 
 /** The ssh command rsync runs (`-e`). Every value in it passed validateConfig. */
 export function sshCommand(c: VpsConfig): string {
+  return ["ssh", ...sshOptions(c)].join(" ");
+}
+
+/** ssh options shared by sync and DESK-021 halt/resume: never prompt, never accept unknown host keys. */
+export function sshOptions(c: VpsConfig): string[] {
   return [
-    "ssh",
     "-o", "BatchMode=yes",
     "-o", "StrictHostKeyChecking=yes",
     "-o", "PasswordAuthentication=no",
@@ -94,7 +98,7 @@ export function sshCommand(c: VpsConfig): string {
     "-o", "ConnectTimeout=15",
     "-i", c.keyPath,
     "-p", String(c.port),
-  ].join(" ");
+  ];
 }
 
 /** rsync argument arrays for the two pulls. `--` ends options before any path. */
@@ -140,6 +144,8 @@ export function classify(what: VpsStep["what"], code: number | null, stderr: str
 export interface RunResult {
   code: number | null;
   stderr: string;
+  /** Captured (capped) only for DESK-021, which shows the command's output. */
+  stdout?: string;
   spawnError?: string;
   timedOut?: boolean;
 }
@@ -147,6 +153,7 @@ export interface RunResult {
 export function runTool(spawn: SpawnLike, cmd: string, args: readonly string[], timeoutMs = RUN_TIMEOUT_MS): Promise<RunResult> {
   return new Promise((done) => {
     let stderr = "";
+    let stdout = "";
     let finished = false;
     const finish = (r: RunResult) => {
       if (finished) return;
@@ -168,14 +175,16 @@ export function runTool(spawn: SpawnLike, cmd: string, args: readonly string[], 
     }
     const timer = setTimeout(() => {
       proc.kill("SIGTERM");
-      finish({ code: null, stderr, timedOut: true });
+      finish({ code: null, stderr, stdout, timedOut: true });
     }, timeoutMs);
     proc.stderr?.on("data", (d) => {
       if (stderr.length < 64_000) stderr += String(d);
     });
-    proc.stdout?.on("data", () => undefined);
-    proc.on("error", (e) => finish({ code: null, stderr, spawnError: e.code === "ENOENT" ? "ENOENT" : e.message }));
-    proc.on("close", (code) => finish({ code, stderr }));
+    proc.stdout?.on("data", (d) => {
+      if (stdout.length < 64_000) stdout += String(d);
+    });
+    proc.on("error", (e) => finish({ code: null, stderr, stdout, spawnError: e.code === "ENOENT" ? "ENOENT" : e.message }));
+    proc.on("close", (code) => finish({ code, stderr, stdout }));
   });
 }
 

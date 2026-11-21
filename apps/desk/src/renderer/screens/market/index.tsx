@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { dbTimeToUnix, type DbError, type DbFeedInfo, type DbInfo, type DbMarket, type DbResult, type DbTopPoint } from "@shared/db";
-import { EmptyState, SchemaError, StaleBanner } from "../../components/states";
+import { EmptyState, SchemaError, StaleBanner, StateTitle } from "../../components/states";
 import { ConnectSource } from "../../data/states";
 import { useNow } from "../../data/hooks";
 import { useKeys } from "../../lib/keys";
@@ -57,7 +57,7 @@ export function DbErrorState({ error }: { error: DbError }) {
   }
   return (
     <section className="state state-error" role="alert" aria-label="Database unavailable">
-      <h2 className="state-title">Database unavailable</h2>
+      <StateTitle kind="error">Database unavailable</StateTitle>
       <p>{error.message}</p>
       {error.file !== undefined && (
         <p className="dim">

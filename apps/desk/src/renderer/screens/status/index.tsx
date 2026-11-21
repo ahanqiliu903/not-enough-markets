@@ -2,6 +2,7 @@ import type { DataError, Snapshot, StatusReport } from "@shared/data";
 import { EmptyState, formatAge } from "../../components/states";
 import { int, ts } from "../../data/format";
 import { DataErrors, SourceGate } from "../../data/states";
+import { HaltControls } from "../../halt";
 import { useNav } from "../../state/nav";
 import "./status.css";
 
@@ -37,6 +38,7 @@ function Status({ snapshot }: { snapshot: Snapshot }) {
       ) : (
         <StatusReportView st={st} />
       )}
+      <HaltControls />
       <FeedsNote />
     </div>
   );

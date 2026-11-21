@@ -20,7 +20,7 @@ export function NavPane({ routes }: { routes: readonly RouteDef[] }) {
               onClick={() => navigate(r.id)}
             >
               <span className="nav-icon">
-                {r.icon !== undefined && <PixelIcon name={r.icon} />}
+                <PixelIcon name={r.icon} />
               </span>
               <span className="nav-label">{r.title}</span>
               {r.hotkey !== undefined && (

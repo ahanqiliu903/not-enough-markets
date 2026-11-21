@@ -4,7 +4,8 @@
  * Every channel the renderer may call is listed in `IpcChannels` with its request and
  * response types. The preload exposes only these channels (see `IPC_CHANNELS`), and the
  * main process registers a handler for each one (see `src/main/ipc.ts`). All channels are
- * read-only: the desk app never writes to the engine, Kalshi, or the user's files.
+ * read-only: the desk app never writes to the engine, Kalshi, or the user's files. The one
+ * exception is DESK-021 `halt:run` (off by default): it runs `nem halt`/`nem resume` over SSH.
  *
  * To add a channel: add an entry here, add its name to `IPC_CHANNELS`, implement the
  * handler in `src/main/ipc.ts`, and add a method to `NemApi` + `src/preload/index.ts`.
@@ -51,6 +52,8 @@ import type { UpdateState, UpdatesApi } from "./updates";
 import type { SheetsApi, SheetsSaveRequest, SheetsSaveResult, SheetsState, SheetsSyncResult } from "./sheets";
 
 import type { DiagCopyResult, Diagnostics, DiagnosticsApi } from "./diagnostics";
+
+import type { HaltRequest, HaltResult, HaltState } from "./halt";
 
 /** A place the desk app can read engine output from (DESK-003/004, see ./data.ts). */
 export type { DataSource } from "./data";
@@ -103,6 +106,10 @@ export interface IpcChannels {
   "diag:get": { request: void; response: Diagnostics };
   "diag:copy": { request: void; response: DiagCopyResult };
   "diag:revealLog": { request: void; response: boolean };
+  // DESK-021 halt/resume over SSH: the one write path, off by default (src/main/halt/).
+  "halt:get": { request: void; response: HaltState };
+  "halt:setEnabled": { request: boolean; response: HaltState };
+  "halt:run": { request: HaltRequest; response: HaltResult };
 }
 
 export type IpcChannel = keyof IpcChannels;
@@ -150,6 +157,9 @@ export const IPC_CHANNELS = [
   "diag:get",
   "diag:copy",
   "diag:revealLog",
+  "halt:get",
+  "halt:setEnabled",
+  "halt:run",
 ] as const satisfies readonly IpcChannel[];
 
 // Compile-time check that IPC_CHANNELS lists every channel in IpcChannels.

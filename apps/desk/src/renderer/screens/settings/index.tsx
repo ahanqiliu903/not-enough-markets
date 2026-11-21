@@ -4,6 +4,7 @@ import { EmptyState } from "../../components/states";
 import { useSourcesState } from "../../data/hooks";
 import { ConnectSource, DATA_COMMANDS } from "../../data/states";
 import { nem } from "../../lib/api";
+import { HaltSettings } from "../../halt";
 import { useSettings } from "../../state/settings";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN } from "../../theme";
 import { UpdateSettings } from "../../updates";
@@ -110,6 +111,8 @@ export default function SettingsScreen() {
       <VpsSync />
 
       <SheetsSource />
+
+      <HaltSettings />
 
       <section className="section">
         <h2 className="section-title">Display</h2>

@@ -103,16 +103,26 @@ html[data-pixel="off"] .pixel-icon {
   visibility: hidden;
 }
 
-/* Stepped "pixel" corners drawn with outlines/shadows, which don't affect layout. */
+/* Stepped "pixel" corners drawn with shadows, which don't affect layout. Every card-like box
+   gets them (cards, panel boxes, state boxes, lore cards); `--frame` picks the color, so an
+   error box or an active tile keeps its own border color. Accents off: a plain 1px border. */
 .pixel-border {
-  border: 1px solid var(--border);
+  border: 1px solid var(--frame, var(--border));
 }
-html[data-pixel="on"] .pixel-border {
+.card {
+  border: 1px solid var(--frame, var(--border));
+}
+html[data-pixel="on"] :is(.pixel-border, .card, .panel-box, .state) {
   box-shadow:
-    2px 0 0 0 var(--border),
-    -2px 0 0 0 var(--border),
-    0 2px 0 0 var(--border),
-    0 -2px 0 0 var(--border);
+    2px 0 0 0 var(--frame, var(--border)),
+    -2px 0 0 0 var(--frame, var(--border)),
+    0 2px 0 0 var(--frame, var(--border)),
+    0 -2px 0 0 var(--frame, var(--border));
+}
+/* Card-title icons sit on the title's baseline row. */
+.card-icon {
+  color: var(--amber);
+  align-self: center;
 }
 
 /* ---------- shell ---------- */
@@ -134,8 +144,11 @@ html[data-pixel="on"] .pixel-border {
   height: var(--bar-height);
 }
 .command-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--amber);
-  width: 9em;
+  width: 10.5em;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -342,6 +355,17 @@ html[data-pixel="on"] .pixel-border {
 .tier-badge-label {
   line-height: 16px;
 }
+/* Pixel accents: notched 2px frame in the tier color, a faint tier-tinted fill and a darker
+   bottom step. All shadows, so the badge's box is the same with accents off. */
+html[data-pixel="on"] .tier-badge {
+  background: color-mix(in srgb, currentColor 12%, var(--bg));
+  box-shadow:
+    1px 0 0 0 currentColor,
+    -1px 0 0 0 currentColor,
+    0 1px 0 0 currentColor,
+    0 -1px 0 0 currentColor,
+    inset 0 -2px 0 0 color-mix(in srgb, currentColor 28%, var(--bg));
+}
 .tier-common {
   color: var(--tier-common);
 }
@@ -367,12 +391,15 @@ html[data-pixel="on"] .pixel-border {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 16em;
+  min-width: 20em;
   padding: 6px 8px;
   background: var(--bg);
   color: var(--text);
 }
 .lore-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 4px;
 }
 .lore-stat {
@@ -393,11 +420,15 @@ html[data-pixel="on"] .pixel-border {
   background: var(--bg);
 }
 .state-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 6px;
   font-size: var(--fs-md);
   color: var(--amber);
 }
 .state-error {
+  --frame: var(--down);
   border-color: var(--down);
 }
 .state-error .state-title {
@@ -433,6 +464,11 @@ html[data-pixel="on"] .pixel-border {
 .banner strong {
   color: var(--amber);
   margin-right: 6px;
+}
+.banner .pixel-icon {
+  color: var(--amber);
+  margin-right: 6px;
+  vertical-align: -3px;
 }
 
 /* ---------- value flash ---------- */

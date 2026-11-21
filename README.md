@@ -248,6 +248,14 @@ nem resume research/fav90
 
 Edit portfolio files while it runs: changes are picked up on the next tick, and an invalid edit is rejected while the old config keeps running.
 
+## NEM Desk
+
+A desktop app (macOS, Windows; read-only apart from an opt-in halt/resume) for looking at what the engine exports: portfolios with verdict badges, strategy detail, trades, backtest sweeps, recorded markets, engine status, and Kalshi's public markets. It reads a folder of `out/` files, a server it syncs over SSH, or the published Google Sheet; it never computes statistics, places orders or holds Kalshi keys. See [apps/desk/README.md](apps/desk/README.md) for install, screens and shortcuts.
+
+| Portfolios | Backtests heatmap |
+|---|---|
+| ![NEM Desk Portfolios screen](apps/desk/docs/screenshots/portfolios.png) | ![NEM Desk Backtests heatmap](apps/desk/docs/screenshots/backtests.png) |
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/) and [gitleaks](https://github.com/gitleaks/gitleaks).

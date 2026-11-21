@@ -4,6 +4,7 @@ import type { DbResult } from "@shared/db";
 import type { VpsState } from "@shared/vps";
 import type { UpdateState } from "@shared/updates";
 import type { SheetsState } from "@shared/sheets";
+import type { HaltState } from "@shared/halt";
 
 const kalshiOffline = <T>(): Promise<KalshiResult<T>> =>
   Promise.resolve({ ok: false, error: { kind: "offline", message: "Not running inside NEM Desk" } });
@@ -27,6 +28,8 @@ const offlineSheets: SheetsState = {
 const sheetsOffline = { kind: "not_configured" as const, message: "Not running inside NEM Desk" };
 
 const offlineVps: VpsState = { config: null, cacheDir: "", syncing: false, lastSync: null };
+
+const offlineHalt: HaltState = { enabled: false, target: null, runsAs: null, portfolios: [], strategies: [], halts: [], running: false };
 
 /**
  * The renderer's only door to the main process. Outside Electron (unit tests, a plain
@@ -74,6 +77,12 @@ const offline: NemApi = {
           sync: { at: new Date(0).toISOString(), ok: false, steps: [], error: { kind: "not_configured", message: "Not running inside NEM Desk" } },
         }),
       pickKey: () => Promise.resolve(null),
+      halt: {
+        get: () => Promise.resolve(offlineHalt),
+        setEnabled: () => Promise.resolve(offlineHalt),
+        run: () =>
+          Promise.resolve({ ok: false, command: null, output: "", error: { kind: "disabled", message: "Not running inside NEM Desk" }, state: offlineHalt }),
+      },
     },
     sheets: {
       get: () => Promise.resolve(offlineSheets),
@@ -114,4 +123,5 @@ export const queryKeys = {
   updates: ["updates"] as const,
   sheets: ["sheets"] as const,
   diagnostics: ["diagnostics"] as const,
+  halt: ["halt"] as const,
 };

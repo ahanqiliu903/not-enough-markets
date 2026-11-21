@@ -59,6 +59,11 @@ const api: NemApi = {
       forget: () => invoke("vps:forget"),
       sync: () => invoke("vps:sync"),
       pickKey: () => invoke("vps:pickKey"),
+      halt: {
+        get: () => invoke("halt:get"),
+        setEnabled: (enabled) => invoke("halt:setEnabled", enabled),
+        run: (request) => invoke("halt:run", request),
+      },
     },
     sheets: {
       get: () => invoke("sheets:get"),

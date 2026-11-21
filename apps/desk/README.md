@@ -4,14 +4,58 @@ A read-only desktop app for looking at NotEnoughMarkets results: portfolios, str
 verdicts, trades, market data and engine status. It reads files the engine exports and
 never computes statistics, places orders, or holds Kalshi keys.
 
-Status: shell (DESK-001/002/005), folder data layer and sources with file watching
-(DESK-003/004), and the Portfolios, Strategy, Trades and Compare screens (DESK-006..009).
-Backtests and Feeds and Status (DESK-014..017) read `out/backtests/*.json` and `status.json`.
-Market (DESK-011) reads a snapshot SQLite DB (DESK-010); VPS sync (DESK-013) pulls one.
-A Google Sheet the engine publishes can be a source too (DESK-012); Settings has logs and
-diagnostics (DESK-020).
+![Portfolios screen on the bundled sample data](docs/screenshots/portfolios.png)
 
-## Run
+Status: every ticket in [TICKETS.md](TICKETS.md) is done. More screenshots (all on the
+bundled sample data and recorded Kalshi responses) are in [docs/screenshots/](docs/screenshots/).
+
+## Screens
+
+| Key | Screen | What it shows |
+|---|---|---|
+| Cmd/Ctrl+1 | Portfolios | A card per portfolio (equity, P&L vs holding cash, open positions), strategy rows with verdict badges; hover a badge for its lore card |
+| Cmd/Ctrl+2 | Strategy | Tier badge, win-rate and edge intervals vs break-even, SPRT progress, P&L curve and drawdown, calibration, signal reasons |
+| Cmd/Ctrl+3 | Compare | 2 to 4 strategies (retired included): P&L curves from a common start, stats, verdicts |
+| Cmd/Ctrl+4 | Trades | Virtualized blotter: sort, filter, CSV export (100k rows smooth) |
+| Cmd/Ctrl+5 | Market | Recorded markets from a snapshot DB: top of book, depth, feed overlay at `known_at` |
+| Cmd/Ctrl+6 | Backtests | Run list, sweep heatmap (chosen cell, `n` per cell), train vs held-out test, backtest vs paper (hidden until a source has backtests) |
+| Cmd/Ctrl+7 | Feeds and Status | Engine health, heartbeats, halts, per-strategy activity |
+| Cmd/Ctrl+8 | Sources and Settings | Sources, Google Sheet, VPS sync, halt/resume flag, pixel accents, font size, updates, diagnostics |
+| Cmd/Ctrl+9 | Explore | Kalshi's public markets: categories, series, markets, YES/NO order book, settlement rules |
+
+| Market | Backtests heatmap | Explore |
+|---|---|---|
+| ![Market](docs/screenshots/market.png) | ![Backtests](docs/screenshots/backtests.png) | ![Explore](docs/screenshots/explore.png) |
+
+## Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| Cmd/Ctrl+K | Command palette: jump to a screen, portfolio, strategy or series (`explore KXHIGHNY`), switch source, refresh, toggle pixel accents |
+| Cmd/Ctrl+1..9 | Screens (table above) |
+| `/` | Focus the screen's filter |
+| `j` / `k` | Next / previous row (portfolios, backtest runs, markets, series tiles) |
+| Enter | Open the selected row |
+| Esc | Back (or close the palette / lore card) |
+| `c` | Add the selected strategy to Compare |
+| `t` | From Strategy: its trades |
+| `r` | Refresh all data |
+
+Plain keys are ignored while typing in a text field. Cmd on macOS, Ctrl elsewhere.
+
+## Data sources at a glance
+
+| Source | How | Details |
+|---|---|---|
+| Folder | Sources and Settings → "Add folder...": an engine `out/` folder or its parent | [Data sources](#data-sources) |
+| Sample | "Load sample data" on any empty state (the contract's `basic` fixture, bundled) | [Data sources](#data-sources) |
+| VPS sync | Settings → "VPS sync": system `rsync` over `ssh` into a local cache | [VPS sync](#vps-sync-desk-013) |
+| Google Sheet | Settings → "Google Sheet": a sheet shared "Anyone with the link: Viewer" | [Google Sheets source](#google-sheets-source-desk-012) |
+
+A snapshot SQLite DB (`nem.db`) beside a source, or attached in Settings, feeds the Market
+screen. Explore reads Kalshi's public API directly (no key) and needs no source.
+
+## Develop
 
 Requires Node 24 and npm.
 
@@ -27,10 +71,12 @@ npm run e2e        # build, then Playwright drives the real Electron app
 
 | Script | What it does |
 |---|---|
-| `lint` | ESLint (typescript-eslint strict, type-checked; react-hooks) and `scripts/check-no-hex.mjs` (no hex colors outside `src/renderer/theme.ts`) |
+| `lint` | ESLint (typescript-eslint strict, type-checked; react-hooks), `scripts/check-no-hex.mjs` (no hex colors outside `src/renderer/theme.ts`) and `scripts/check-assets.mjs` (asset licenses, no third-party game names) |
 | `typecheck` | `tsc` for main/preload (`tsconfig.node.json`), renderer (`tsconfig.web.json`) and e2e (`tsconfig.e2e.json`) |
 | `test` | Vitest + Testing Library (jsdom) |
-| `e2e` | Playwright for Electron, `e2e/smoke.spec.ts` |
+| `e2e` | Playwright for Electron, every `e2e/*.spec.ts` against the built app |
+| `icon` | Regenerates `build/icon.{png,icns,ico}` from `scripts/make-icon.mjs` |
+| `screenshots` | Rebuilds `docs/screenshots/*.png` (`e2e/screenshots.spec.ts` with `NEM_SCREENSHOT_DIR`; macOS/Linux shell) |
 
 Electron downloads its binary on first use. If `npm run dev` or `e2e` says it can't find it,
 run `node node_modules/electron/install.js`. If Electron starts as plain Node ("bad option:
@@ -104,22 +150,37 @@ exactly in `package.json`.
 ```
 src/
   main/            Electron main process. index.ts (window, security), ipc.ts (handlers).
-                   data/ is the data layer: CSV/JSON readers validated against
-                   contract/schema (bundled at build time), sources + watching.
+    data/          Data layer: CSV/JSON readers validated against contract/schema (bundled
+                   at build time), sources (folder, sample, vps, sheets) + watching.
+    db/            Read-only snapshot SQLite reader (node:sqlite) for the Market screen.
+    kalshi/        Explore's GET-only client for Kalshi's public API (+ recorded fixtures).
+    vps/           VPS sync: system rsync over ssh into <userData>/vps-cache.
+    sheets/        Google Sheets source: gviz CSV fetch into <userData>/sheets-cache.
+    halt/          DESK-021 halt/resume over ssh (off by default).
+    log/           main.log with rotation, and redaction of every line.
+    diagnostics/   Settings → Diagnostics report (redacted).
+    updates/       Daily "update available" check against GitHub Releases.
   preload/         index.ts exposes the allowlisted `window.nem` API; api.d.ts types it.
-  shared/ipc.ts    IPC channel type map, the channel allowlist, the NemApi interface.
+  shared/          ipc.ts (channel type map, allowlist, NemApi) and the types each area
+                   shares between main and renderer (data, db, kalshi, vps, sheets, ...).
   renderer/
     theme.ts       ALL design tokens (colors, fonts, type scale, layout), contrast math.
-    routes.ts      The one route table (screens, hotkeys, palette keywords).
+    routes.ts      The one route table (screens, hotkeys, icons, palette keywords).
     screens/<id>/  One folder per screen; index.tsx default-exports the screen.
     shell/         Command bar, nav + splitter, palette, status bar, error boundary.
-    components/    TierBadge, LoreCard, PixelIcon, PaneTitle, FlashValue,
-                   EmptyState / StaleBanner / SchemaError (states.tsx).
+    components/    TierBadge, LoreCard, PixelIcon (all 16x16 icons), PaneTitle, FlashValue,
+                   EmptyState / StaleBanner / SchemaError / StateTitle (states.tsx).
+    data/          Query hooks, formatters, charts (uPlot), shared data states, data.css.
+    halt/          Halt/resume panel (Status screen, behind the flag).
+    updates/       Update-available notice.
     lib/           tier(), key handling (keys.ts), fuzzy match, value flash, api wrapper.
     state/         Zustand stores: nav, settings (persisted), commands.
     styles/        app.css (uses only CSS variables), fonts.css.
     assets/fonts/  JetBrains Mono + Silkscreen, each with its OFL license.
-e2e/               Playwright Electron smoke test.
+build/             App icon (icon.icns / .ico / .png), generated by scripts/make-icon.mjs.
+scripts/           check-no-hex.mjs, check-assets.mjs, make-icon.mjs.
+docs/screenshots/  README screenshots (sample data), made by e2e/screenshots.spec.ts.
+e2e/               Playwright specs against the built app; fixtures/ (Kalshi, GitHub).
 ```
 
 ## Adding a screen
@@ -151,7 +212,9 @@ e2e/               Playwright Electron smoke test.
 4. Renderer: call `nem().method()` from `lib/api.ts` inside a TanStack Query hook, with a
    key in `queryKeys`. `lib/api.ts` has an offline stub for tests.
 
-Channels are read-only. There is no write, order, or key path, and there should never be.
+Channels are read-only. There is no order or key path, and there should never be. The one
+write is DESK-021's `halt:run` (off by default), which runs the engine's own `nem halt` /
+`nem resume` over SSH.
 
 ## Explore (Kalshi markets, screen 9)
 
@@ -196,9 +259,9 @@ Cmd/Ctrl+9, or type `explore SERIES` in the command bar. Read-only research on K
   snapshot (`Snapshot.backtests: BacktestRun[]`); nothing is recomputed.
 - **Feeds and Status** (DESK-014, Cmd/Ctrl+7) from `status.json`: the engine's `healthy`,
   process heartbeats with their state (ok / failing / stale / never), halts (scope, reason,
-  since; read-only), per-strategy activity. Contract 1.0 has no feed freshness, so the
-  Feeds section says so instead of guessing. The status bar shows the engine's health and
-  the newest heartbeat's age.
+  since; read-only unless DESK-021 is switched on), per-strategy activity. Contract 1.0
+  has no feed freshness, so the Feeds section says so instead of guessing. The status bar
+  shows the engine's health and the newest heartbeat's age.
 
 ## Security
 
@@ -217,9 +280,25 @@ Cmd/Ctrl+9, or type `explore SERIES` in the command bar. Read-only research on K
 - Colors live only in `src/renderer/theme.ts` (lint fails otherwise). Text tokens are
   tested for WCAG contrast >= 4.5:1 on `--bg` and `--panel`.
 - Tier labels are always shown with their color (UNDECIDED, UNDECIDED+, EDGE, NO EDGE).
-- Silkscreen (pixel font) only for pane titles, the brand and tier badges, never numbers.
-  Settings → "Pixel accents" off swaps it for JetBrains Mono and hides pixel icons
-  without moving layout (checked in e2e).
+- Silkscreen (pixel font) only for pane titles, card titles, the brand and tier badges,
+  never numbers or tables.
+- **Pixel accents** (DESK-022), all original art: one 16x16 icon set in
+  `components/PixelIcon.tsx` (every screen in nav and pane title, portfolio/strategy/backtest
+  card titles, the four tiers, empty/stale/error states, Explore categories, the brand);
+  stepped pixel frames on cards, panel boxes, state boxes and lore cards; tier badges with a
+  notched frame and tint in their tier color. Tier colors stay reserved for verdicts.
+- Settings → "Pixel accents" off (or Cmd/Ctrl+K → "Pixel accents") leaves a plain terminal
+  layout: `--font-pixel` itself becomes JetBrains Mono, icons are hidden (their boxes kept)
+  and frames go back to 1px borders, without moving layout. `e2e/screenshots.spec.ts`
+  walks every main screen and fails if any element still uses Silkscreen, shows an icon or
+  draws a pixel frame.
+- **App icon**: `build/icon.{icns,ico,png}`, a 16x16 pixel grid in theme colors rendered by
+  `scripts/make-icon.mjs` (plain Node, no image tools); `npm run icon` regenerates it.
+- **Asset check** (`scripts/check-assets.mjs`, in `npm run lint`): every font or image is
+  either generated original art (the app icon, byte-for-byte the script's output; the
+  screenshots) or sits next to a license file, and no third-party game names appear
+  anywhere in `apps/desk` (sources, assets, binaries; TICKETS.md, which states the rule, is
+  exempt).
 - Value flashes last 150ms and are disabled under `prefers-reduced-motion`.
 - The dev-only Kitchen Sink screen (Cmd/Ctrl+K → "Kitchen Sink" in `npm run dev`) shows
   every token, tier badge, icon and the type scale.
@@ -278,6 +357,38 @@ must already be in your `known_hosts`, so an unknown or changed key fails closed
 message. It pulls `out/` (with `--delete`) and `data/snapshot/nem.db` into
 `<userData>/vps-cache/`, which becomes the `vps` source. Values are validated to a safe
 character set (key paths without spaces). Tests mock `spawn`; none contacts a server.
+
+## Halt and resume over SSH (DESK-021, experimental, off by default)
+
+The app's only write path. Settings → "Halt and resume" → "Enable halt/resume over SSH
+(experimental)" (stored in userData `halt.json`; off by default, and main refuses
+`halt:run` while it is off). When on, the Status screen (Cmd/Ctrl+7) shows "Halt / resume
+over SSH" under the halts list:
+
+- **Halt**: scope `*` (everything), a portfolio, or `portfolio/strategy`, plus a required
+  reason. **Resume**: one of the halts in the last synced `status.json`. Scopes, modes and
+  halts come from the VPS cache (last sync), not the active source.
+- **Typed confirmation**: the button stays disabled until you type the exact scope (e.g.
+  `paper0/fav_90_btc`); main checks the typed value equals the scope again.
+- **Paper only** until live trading (M8) is reviewed: a portfolio whose `mode` in the VPS
+  cache's `summary.csv` isn't `paper`, or is unknown, is refused, and `*` is refused unless
+  every known portfolio is paper. Use the server's terminal for those (deploy/RUNBOOK.md,
+  "Kill switch").
+- **How it runs**: the system `ssh` with the VPS sync settings and options
+  (`BatchMode=yes`, `StrictHostKeyChecking=yes`, no passwords), spawned without a local
+  shell. ssh hands the remote shell one string, so main builds it from validated values
+  only (scope `[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)?` or `*`, parts not starting with `-`;
+  reason printable ASCII, at most 200 characters), each POSIX single-quoted:
+  `cd '<remote folder>' && .venv/bin/nem halt '<scope>' '--reason=<reason>'`. The engine's
+  database belongs to the `nem` user, so a login other than `nem` runs it as
+  `sudo -n -u nem .venv/bin/nem ...` (the RUNBOOK's `sudo -u nem` pattern); `-n` never
+  prompts, so a sudo that needs a password fails instead. Assumes a POSIX login shell.
+- **Fails closed**: unknown host key, auth or network errors, nonzero exit, or the 60 s
+  timeout are reported as failures with the output; nothing is retried. A timeout means the
+  command may or may not have run: check `nem status` on the server. After success the app
+  runs a VPS sync so `status.json` refreshes, and shows the command's output.
+- Every attempt (and refusal) is logged to `main.log` (redacted; the host is not logged).
+  Tests mock `spawn` and the e2e spec mocks main's handlers; none runs ssh.
 
 ## Google Sheets source (DESK-012)
 

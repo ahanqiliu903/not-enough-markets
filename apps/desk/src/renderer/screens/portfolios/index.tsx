@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { PortfolioData, Snapshot } from "@shared/data";
+import { PixelIcon } from "../../components/PixelIcon";
 import { EmptyState } from "../../components/states";
 import { useCompare } from "../../data/compare";
 import { int, pct, signClass, signedUsd, ts, usd } from "../../data/format";
@@ -117,6 +118,7 @@ function PortfolioCard({
   return (
     <section className="card pixel-border" aria-label={`Portfolio ${p.name}`}>
       <div className="card-head">
+        <PixelIcon name="portfolio" className="card-icon" />
         <h2 className="card-title pixel-font">{p.name}</h2>
         {s !== null && <span className="tag">{s.mode.toUpperCase()}</span>}
         {s !== null && <span className="dim">as of {ts(s.as_of)}</span>}

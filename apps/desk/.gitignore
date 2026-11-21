@@ -7,3 +7,5 @@ playwright-report/
 coverage/
 *.log
 .DS_Store
+# The repo root ignores build/; here it holds the generated app icon (DESK-022).
+!build/

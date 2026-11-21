@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Shell } from "./shell/Shell";
 import { useSettings } from "./state/settings";
-import { applyTheme } from "./theme";
+import { applyTheme, fonts } from "./theme";
 
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -18,11 +18,13 @@ function useThemeSync(): void {
   const fontSize = useSettings((s) => s.fontSize);
   const pixel = useSettings((s) => s.pixelAccents);
   useEffect(() => {
-    applyTheme(document.documentElement.style, fontSize);
-  }, [fontSize]);
-  useEffect(() => {
-    document.documentElement.dataset["pixel"] = pixel ? "on" : "off";
-  }, [pixel]);
+    const root = document.documentElement;
+    applyTheme(root.style, fontSize);
+    root.dataset["pixel"] = pixel ? "on" : "off";
+    // Accents off: the pixel font token itself becomes mono, so nothing can render
+    // Silkscreen even outside `.pixel-font`.
+    root.style.setProperty("--font-pixel", pixel ? fonts.pixel : fonts.mono);
+  }, [fontSize, pixel]);
 }
 
 export function App({ client }: { client?: QueryClient }) {

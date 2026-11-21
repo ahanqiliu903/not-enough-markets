@@ -1,4 +1,5 @@
 import type { BacktestRun, Snapshot, StrategyRow, VariantMetrics } from "@shared/data";
+import { PixelIcon } from "../../components/PixelIcon";
 import { TierBadge } from "../../components/TierBadge";
 import { IntervalChart } from "../../data/charts";
 import { cents, int, ts } from "../../data/format";
@@ -16,6 +17,7 @@ export function RunDetail({ run, snapshot }: { run: BacktestRun; snapshot: Snaps
     <div className="screen-stack" aria-label={`Backtest ${run.run_id}`}>
       <div className="card-head">
         <RunStatusTag status={run.status} />
+        <PixelIcon name="backtests" className="card-icon" />
         <h2 className="card-title pixel-font">{run.strategy}</h2>
         <span className="dim">
           {run.portfolio} / {run.series}

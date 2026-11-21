@@ -25,7 +25,8 @@ export interface RouteDef {
   title: string;
   /** Cmd/Ctrl+N. */
   hotkey?: number;
-  icon?: PixelIconName;
+  /** Original 16x16 pixel icon (nav and pane title); hidden, not removed, with accents off. */
+  icon: PixelIconName;
   /** Words the command palette also matches. */
   keywords?: string;
   component: LazyExoticComponent<ComponentType>;
@@ -55,6 +56,7 @@ export const routes: readonly RouteDef[] = [
     id: "compare",
     title: "Compare",
     hotkey: 3,
+    icon: "compare",
     keywords: "side by side",
     component: lazy(() => import("./screens/compare")),
   },
@@ -62,6 +64,7 @@ export const routes: readonly RouteDef[] = [
     id: "trades",
     title: "Trades",
     hotkey: 4,
+    icon: "trades",
     keywords: "fills ledger history",
     component: lazy(() => import("./screens/trades")),
   },
@@ -69,6 +72,7 @@ export const routes: readonly RouteDef[] = [
     id: "market",
     title: "Market",
     hotkey: 5,
+    icon: "market",
     keywords: "order book prices series",
     component: lazy(() => import("./screens/market")),
   },
@@ -76,6 +80,7 @@ export const routes: readonly RouteDef[] = [
     id: "backtests",
     title: "Backtests",
     hotkey: 6,
+    icon: "backtests",
     keywords: "replay suggest sweep",
     component: lazy(() => import("./screens/backtests")),
     hidden: (flags) => !flags.hasBacktests,
@@ -92,6 +97,7 @@ export const routes: readonly RouteDef[] = [
     id: "settings",
     title: "Sources and Settings",
     hotkey: 8,
+    icon: "settings",
     keywords: "data source preferences font pixel accents",
     component: lazy(() => import("./screens/settings")),
   },
@@ -106,6 +112,7 @@ export const routes: readonly RouteDef[] = [
   {
     id: "kitchen-sink",
     title: "Kitchen Sink",
+    icon: "swatches",
     keywords: "tokens theme design dev",
     component: lazy(() => import("./screens/kitchen-sink")),
     devOnly: true,

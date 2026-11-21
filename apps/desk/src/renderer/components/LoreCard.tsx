@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
 import { TIER_COLOR_VAR, type Tier } from "../lib/tier";
+import { PixelIcon } from "./PixelIcon";
 
 export interface LoreStat {
   label: string;
@@ -48,6 +49,7 @@ export function LoreCard({
             className="lore-title pixel-font"
             style={{ color: tier !== undefined ? TIER_COLOR_VAR[tier] : "var(--amber)" }}
           >
+            {tier !== undefined && <PixelIcon name={`tier-${tier}`} size={12} />}
             {title}
           </span>
           {stats.map((s) => (

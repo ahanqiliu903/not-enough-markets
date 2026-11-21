@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Suspense, useEffect, useMemo } from "react";
 import { PaneTitle } from "../components/PaneTitle";
+import { PixelIcon } from "../components/PixelIcon";
 import { EmptyState } from "../components/states";
 import { useDataSync } from "../data/hooks";
 import { comboLabel, KEY_PRIORITY, useKeys, type KeyBindings } from "../lib/keys";
@@ -93,7 +94,10 @@ export function Shell() {
   return (
     <div className="shell" style={{ gridTemplateColumns: `${navWidth}px 4px 1fr` }}>
       <header className="command-bar">
-        <span className="command-brand pixel-font">NEM DESK</span>
+        <span className="command-brand">
+          <PixelIcon name="desk" />
+          <span className="pixel-font">NEM DESK</span>
+        </span>
         <button
           type="button"
           className="command-trigger"
@@ -109,7 +113,7 @@ export function Shell() {
       <Splitter />
       <main className="main-pane" aria-label={current?.title ?? "Screen"}>
         {current !== undefined && (
-          <PaneTitle title={current.title} {...(current.icon ? { icon: current.icon } : {})} />
+          <PaneTitle title={current.title} icon={current.icon} />
         )}
         <div className="pane-body" data-screen={current?.id}>
           <ScreenErrorBoundary key={current?.id} screen={current?.id ?? "unknown"}>

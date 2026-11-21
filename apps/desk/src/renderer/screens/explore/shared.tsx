@@ -2,6 +2,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { useState } from "react";
 import { strategyAddCommand, type KalshiError, type KalshiResult } from "@shared/kalshi";
 import { LoreCard } from "../../components/LoreCard";
+import { StateTitle } from "../../components/states";
 import { nem } from "../../lib/api";
 import { ERROR_TEXT, type RulesCardContent } from "./format";
 
@@ -23,7 +24,7 @@ export function KalshiErrorState({ error }: { error: KalshiError }) {
   const t = ERROR_TEXT[error.kind];
   return (
     <section className={`state state-error kalshi-error-${error.kind}`} role="alert" aria-label={t.title}>
-      <h2 className="state-title">{t.title}</h2>
+      <StateTitle kind="error">{t.title}</StateTitle>
       <p>{t.reason}</p>
       <p className="dim">
         <code>{error.message}</code>

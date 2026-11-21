@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { PnlCurve, Snapshot, StrategyExtras, StrategyRow } from "@shared/data";
+import { PixelIcon } from "../../components/PixelIcon";
 import { EmptyState } from "../../components/states";
 import { CalibrationChart, IntervalChart, LineChart, ProgressBar } from "../../data/charts";
 import { useCompare } from "../../data/compare";
@@ -101,6 +102,7 @@ function Detail({
     <div className="screen-stack" aria-label={`Strategy ${r.strategy}`}>
       <div className="card-head">
         <StrategyBadge row={r} />
+        <PixelIcon name="strategy" className="card-icon" />
         <h2 className="card-title pixel-font">{r.strategy}</h2>
         <span className="dim">
           {portfolio} / {r.series}

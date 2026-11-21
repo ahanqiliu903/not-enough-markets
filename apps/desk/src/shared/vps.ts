@@ -5,6 +5,7 @@
  */
 
 import type { SourcesState } from "./data";
+import type { HaltApi } from "./halt";
 
 export const DEFAULT_REMOTE_BASE = "/home/nem/not-enough-markets";
 
@@ -81,4 +82,6 @@ export interface VpsApi {
   sync: () => Promise<VpsSyncResult>;
   /** Shows a file picker (default ~/.ssh); returns the chosen path or null. */
   pickKey: () => Promise<string | null>;
+  /** DESK-021: `nem halt` / `nem resume` on this VPS over ssh (off by default). Optional so older test doubles still fit; missing means off. */
+  halt?: HaltApi;
 }

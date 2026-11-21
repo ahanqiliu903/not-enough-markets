@@ -5,6 +5,7 @@ import { dataHandlers } from "./data/handlers";
 import { dbHandlers } from "./db/handlers";
 import { diagHandlers, startDiagnostics } from "./diagnostics";
 import { kalshiHandlers } from "./kalshi";
+import { haltHandlers } from "./halt";
 import { errorText } from "./log/logger";
 import { log } from "./log";
 import { sheetsHandlers, startSheets } from "./sheets";
@@ -30,6 +31,7 @@ export const handlers: Handlers = {
   ...updatesHandlers,
   ...sheetsHandlers,
   ...diagHandlers,
+  ...haltHandlers,
 };
 
 export function registerIpc(isTrustedSender: (url: string) => boolean): void {

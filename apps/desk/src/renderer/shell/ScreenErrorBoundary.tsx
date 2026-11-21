@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { StateTitle } from "../components/states";
 
 /** Keeps a crashing screen from taking down the shell (nav, palette, status bar). */
 export class ScreenErrorBoundary extends Component<
@@ -19,7 +20,7 @@ export class ScreenErrorBoundary extends Component<
     if (this.state.error === null) return this.props.children;
     return (
       <section className="state state-error" role="alert" aria-label="Screen error">
-        <h2 className="state-title">This screen failed to render</h2>
+        <StateTitle kind="error">This screen failed to render</StateTitle>
         <p>
           <code>{this.state.error.message}</code>
         </p>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { KalshiMarket } from "@shared/kalshi";
+import { StateTitle } from "../../components/states";
 import { useKeys } from "../../lib/keys";
 import { seedFor } from "./catalog";
 import { countdown, formatEt, formatPrice, isOpen, marketRules, seriesRules } from "./format";
@@ -78,7 +79,7 @@ export function MarketList({ series, onOpenMarket }: { series: string; onOpenMar
         <KalshiErrorState error={markets.error} />
       ) : rows.length === 0 ? (
         <section className="state state-empty" role="status" aria-label="No open markets">
-          <h2 className="state-title">No open markets</h2>
+          <StateTitle kind="empty">No open markets</StateTitle>
           <p>Kalshi lists no open markets for {series} right now. Daily series open new markets each day.</p>
         </section>
       ) : (

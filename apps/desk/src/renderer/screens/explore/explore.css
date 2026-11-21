@@ -53,6 +53,7 @@
   text-align: left;
 }
 .explore-tab.active {
+  --frame: var(--amber);
   color: var(--amber);
   border-color: var(--amber);
 }
@@ -82,6 +83,7 @@
   height: 112px;
 }
 .series-tile.active {
+  --frame: var(--amber);
   border-color: var(--amber);
 }
 .series-tile-open {
