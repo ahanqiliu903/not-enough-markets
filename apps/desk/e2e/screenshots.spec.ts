@@ -52,15 +52,21 @@ test.afterAll(async () => {
 async function shot(name: string): Promise<void> {
   // The sample DB's absolute path (Market screen) becomes repo-relative; after that nothing
   // private may be on screen: no home folder, no OS user name.
-  await page.evaluate((prefix) => {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
-      if (n.textContent?.includes(prefix) === true) n.textContent = n.textContent.replaceAll(prefix, "");
-    }
-  }, `${repoRoot}/`);
+  // The throwaway profile lives in the OS temp folder; show it as the app's data folder.
+  await page.evaluate(
+    ([prefix, profile]) => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
+        if (n.textContent?.includes(profile) === true) n.textContent = n.textContent.replaceAll(profile, "<app data>");
+        if (n.textContent?.includes(prefix) === true) n.textContent = n.textContent.replaceAll(prefix, "");
+      }
+    },
+    [`${repoRoot}/`, join(work, "profile")] as const,
+  );
   const text = await page.evaluate(() => document.body.innerText);
   expect(text).not.toContain(homedir());
   expect(text.toLowerCase()).not.toContain(userInfo().username.toLowerCase());
+  expect(text).not.toContain(work);
   if (shotDir === undefined) return;
   await page.mouse.move(0, 0);
   await page.screenshot({ path: resolve(appDir, shotDir, `${name}.png`), scale: "css", animations: "disabled" });
@@ -107,6 +113,8 @@ async function tour(visit: (name: string) => Promise<void>): Promise<void> {
 }
 
 test("load sample data", async () => {
+  await expect(page.getByRole("button", { name: "Load sample data" })).toBeVisible();
+  await shot("welcome");
   await page.getByRole("button", { name: "Load sample data" }).click();
   await expect(page.getByRole("region", { name: "Portfolio fixture" })).toBeVisible();
 });
@@ -126,6 +134,16 @@ test("main screens with pixel accents on", async () => {
   if (shotDir !== undefined) {
     await page.screenshot({ path: resolve(appDir, shotDir, "lore-card.png"), scale: "css", animations: "disabled" });
   }
+  // Sources and Settings, and the command palette, for the README tutorial.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press(`${mod}+8`);
+  await expect(page.getByRole("table", { name: "Sources" })).toBeVisible();
+  await shot("settings");
+  await page.keyboard.press(`${mod}+k`);
+  await page.keyboard.type("explore KXHIGH");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await shot("palette");
+  await page.keyboard.press("Escape");
 });
 
 test("pixel accents off: no pixel font, icon or pixel frame on any screen", async () => {

@@ -148,9 +148,8 @@ html[data-pixel="on"] :is(.pixel-border, .card, .panel-box, .state) {
   align-items: center;
   gap: 6px;
   color: var(--amber);
-  width: 10.5em;
+  flex-shrink: 0;
   white-space: nowrap;
-  overflow: hidden;
 }
 .command-trigger {
   flex: 1;

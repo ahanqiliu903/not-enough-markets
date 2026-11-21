@@ -96,7 +96,7 @@ export function Shell() {
       <header className="command-bar">
         <span className="command-brand">
           <PixelIcon name="desk" />
-          <span className="pixel-font">NEM DESK</span>
+          <span className="pixel-font">NOTENOUGHMARKETS DESK</span>
         </span>
         <button
           type="button"

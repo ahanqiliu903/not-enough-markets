@@ -14,7 +14,11 @@ A template for Kalshi algorithmic trading.
 > It is meant to be an all-in-one home for automated prediction market trading.
 
 > [!NOTE]
-> **Beta.** You can record live Kalshi data, paper-trade on it with external feeds, get statistics and CSV/Google Sheets reports, and run it 24/7 on a server today. Live trading is still to come. See [Roadmap](#roadmap).
+> **Beta.** You can record live Kalshi data, paper-trade on it with external feeds, get statistics and CSV/Google Sheets reports, run it 24/7 on a server, and browse everything in the **NEM Desk** desktop app today. Live trading is still to come. See [Roadmap](#roadmap).
+
+![NEM Desk showing three paper strategies with their verdicts](apps/desk/docs/screenshots/portfolios.png)
+
+**Contents:** [Tutorial](#tutorial) · [How it's organized](#how-its-organized) · [Reading the statistics](#reading-the-statistics) · [Reports](#reports-csv-json-google-sheets) · [Running 24/7](#running-247) · [NEM Desk](#nem-desk) · [Roadmap](#roadmap)
 
 ## What is this for?
 
@@ -27,6 +31,96 @@ How do you test it? Given the constraints of the strategy, a coding agent (Claud
 - **No new infrastructure every time.** Reuse the same engine for every idea.
 - **Common parameters** (stricter entry, timing, sizing) so you can tweak your strategy as you go.
 - **Easy comparison** of your current strategies against previous ones.
+
+## Tutorial
+
+From nothing to a paper-trading strategy you can watch in a desktop app. No Kalshi account is needed for any of it.
+
+### 1. Install and run the demo
+
+You need `git`, `make` and [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`); uv installs the right Python by itself.
+
+```bash
+git clone https://github.com/ahanqiliu903/not-enough-markets.git && cd not-enough-markets
+make setup                 # install dependencies
+make demo                  # replay ~2h of bundled BTC/ETH data through examples/portfolios/
+```
+
+The demo prints a statistics block per strategy (see [Reading the statistics](#reading-the-statistics)).
+
+### 2. Open NEM Desk
+
+NEM Desk is a read-only desktop app for everything the engine exports. Build and start it (Node 24; prebuilt downloads aren't published yet):
+
+```bash
+cd apps/desk && npm ci && npm run dev
+```
+
+On first launch there's no data yet. **Load sample data** opens a bundled example; **Add folder...** points it at your own `out/` folder (step 5).
+
+![First launch: no data source yet, with Load sample data and Add folder buttons](apps/desk/docs/screenshots/welcome.png)
+
+### 3. Read a strategy
+
+Each portfolio card lists its strategies with a verdict badge: **edge**, **no edge** or **undecided**. Open one (click, or `j`/`k` then Enter) to see win rate vs break-even, edge per contract, how far the sequential test has come, and the P&L curve.
+
+![Strategy screen: win rate and edge intervals vs break-even, sequential test progress, P&L and drawdown](apps/desk/docs/screenshots/strategy.png)
+
+The question is always *win rate vs break-even after fees*. A strategy at 99% wins can still lose money if it pays 99.5c per contract. [Reading the statistics](#reading-the-statistics) explains every number.
+
+### 4. Paper-trade your own idea
+
+Find a market first. Explore (`Cmd/Ctrl+9`, or type `explore` in the command palette, `Cmd/Ctrl+K`) browses Kalshi's public markets with their order books and settlement rules. [docs/kalshi-tickers.txt](docs/kalshi-tickers.txt) lists common series too. Always read a market's rules before trading it.
+
+![Command palette searching Kalshi daily-high series](apps/desk/docs/screenshots/palette.png)
+
+Then, from the repo root:
+
+```bash
+uv run nem init                                          # first portfolio (asks name + balance)
+uv run nem strategy add paper fav90 --series KXBTC15M    # appends a template; edit it in portfolios/paper.yaml
+uv run nem validate                                      # checks every file and plugin
+uv run nem run                                           # paper-trade on live Kalshi prices, recording as it goes
+```
+
+Working with a coding agent? Point it at [AGENTS.md](AGENTS.md): it turns a plain-English hypothesis into a portfolio file, reads the settlement rules back to you, and shows the break-even math before anything trades.
+
+`uv run nem help` lists every command with its options; `uv run nem help run` shows one in detail. More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
+
+### 5. Watch it in the desk
+
+```bash
+uv run nem report --every 5m       # writes out/<portfolio>/*.csv plus out/summary.json and out/status.json
+```
+
+In NEM Desk, **Sources and Settings** (`Cmd/Ctrl+8`) → **Add folder...** → pick `out/` (or the repo root). The desk refreshes as the files change. Running on a server? The same screen syncs `out/` over SSH, or reads the published Google Sheet.
+
+![Sources and Settings: folder sources, VPS sync over SSH, Google Sheet](apps/desk/docs/screenshots/settings.png)
+
+### 6. Get suggested settings, once there's data
+
+After weeks (not hours) of recording, sweep a few settings of a strategy:
+
+```bash
+uv run nem suggest paper fav90 --data data/nem.db \
+  --grid signal.threshold=0.86,0.88,0.90,0.92 --grid gates.0.value=0.94,0.96,0.98 --save
+```
+
+- Each `--grid` is a setting (a dotted path into the strategy, list items by position) and the values to try. Keep it to one or two settings with a handful of values.
+- The data is split in time: settings are chosen on the earliest 70% (`--holdout 0.3`) and only checked on the rest, never chosen from it.
+- The choice favors a broad region of decent settings over the single best cell, shrinks small samples toward zero edge, and treats variants with fewer than `--min-trades` (30) trades as unknown.
+- The result is `suggested`, `rejected` (nothing looked profitable, or it clearly lost on the later data) or `insufficient` (not enough trades). It prints a train vs test table and the grid.
+- `--write` appends the suggestion as `<strategy>_suggested` to the portfolio file, next to the original, so both paper-trade side by side. `--save` keeps the run for the desk's **Backtests** screen:
+
+![Backtests: sweep heatmap with the chosen cell and trade counts, train vs held-out test](apps/desk/docs/screenshots/backtests.png)
+
+### 7. Keep it running
+
+Put it on a small server ([Running 24/7](#running-247)) and check on it from **Feeds and Status** (`Cmd/Ctrl+7`): process heartbeats, halts and what each strategy has been doing.
+
+![Feeds and Status: engine processes, heartbeats, per-strategy activity](apps/desk/docs/screenshots/status.png)
+
+"Undecided after 40 trades" is the expected answer for weeks. Near 90c, telling a 2c edge from none takes over a thousand trades.
 
 ## How it's organized
 
@@ -108,76 +202,6 @@ Positions are held to settlement for now. Exits before settlement (stop-loss, ta
 
 Especially nowadays, it's very easy for them to give optimistic results. The workflow includes a backtest only to reject strategies that show clearly negative results, and the suggested settings are just a sensible starting point. Paper trading is a better indicator.
 
-## Design principles
-
-- **Same code for backtest, paper and live.** Only the data sources (market and feeds) and the broker change, so a strategy can't behave differently in replay than it does live.
-- **No look-ahead.** Signals and gates only see results that settled, and feed values that were published, *before* the current time. This is enforced in one place and tested.
-- **Every signal is logged with a reason**, including the ones that were skipped, so you can measure what each gate actually did.
-- **Kalshi's fees and interest are part of every number.** Paper fills charge Kalshi's taker fee (rounded up to the cent, per order) and walk the real orderbook, so entry prices include slippage. Edge and break-even win rate are computed after fees. Paper portfolios can accrue Kalshi's interest (APY on cash and open positions, accrued daily), so a strategy has to beat simply holding cash to look good.
-- **Idempotent orders.** Order IDs are deterministic, so a retry can never double-fill.
-- **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed. Risk limits use `null` for "disabled", never `0`.
-- **Secrets only from environment variables.** Nothing secret is ever in a config file or a commit; [gitleaks](https://github.com/gitleaks/gitleaks) runs on every commit and in CI.
-
-## Roadmap
-
-| | Milestone | What it adds |
-|---|---|---|
-| ✅ | **M0 Skeleton** | Packaging (uv), lint (ruff), strict typing (pyright), tests (pytest), secret scanning, CI |
-| ✅ | **M1 Core** | Portfolio/strategy config with validation, plugin registry, SQLite store, look-ahead-safe strategy context, Kalshi window-code math |
-| ✅ | **M2 Market data** | Kalshi read client and auth, `nem record` to collect market snapshots and settlements, replay from recorded data |
-| ✅ | **M3 Paper trading** | The trading loop; plugin interfaces for signals, gates, sizing, risk and feeds; paper broker with Kalshi fees, realistic fills and interest accrual; `extreme_favorite`, `max_entry_price`, `time_in_window`, `fixed` / `percent` / `kelly` sizing; `nem init` / `nem portfolio` / `nem strategy` commands; `make demo` |
-| ✅ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
-| ✅ | **M5 24/7 operation** | systemd services and runbook, one process for trading + recording, config hot-reload, `nem status` / `nem halt` / `nem resume` |
-| ✅ | **M6 External feeds** | Coinbase spot and NWS forecast feeds, recorded by `known_at`; market strikes recorded with snapshots; `feed_agrees` and `feed_threshold` gates |
-| ✅ | **M7 Backtest & suggested settings** | `nem replay` over recorded market and feed data through the same loop; `nem suggest` sweeps a small grid in one pass, picks a stable region on the earlier data, and checks it on later data it never saw |
-| ⬜ | **M8 Live trading** | Live broker on Kalshi (demo first), risk manager, budgets across live portfolios |
-| ⬜ | **M9 Docs** | Lessons from running live, "write a signal / feed" guides, a worked case study |
-
-Later: exits before settlement, deeper agent tooling (hypothesis in plain English → portfolio config), and a website view of portfolios and strategies.
-
-## Quickstart
-
-No Kalshi account needed for any of this. You need `git`, `make` and [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`); uv installs the right Python by itself.
-
-```bash
-git clone https://github.com/ahanqiliu903/not-enough-markets.git && cd not-enough-markets
-make setup                 # install dependencies
-make demo                  # replay ~2h of bundled BTC/ETH data through examples/portfolios/
-```
-
-Paper-trade your own idea:
-
-```bash
-uv run nem init                                          # first portfolio (asks name + balance)
-uv run nem strategy add paper fav90 --series KXBTC15M    # appends a template; edit it in portfolios/paper.yaml
-uv run nem validate                                      # checks every file and plugin
-uv run nem run                                           # paper-trade on live Kalshi prices, recording as it goes
-uv run nem summary                                       # statistics per strategy (see below)
-```
-
-Keep it running on a server: see [Running 24/7](#running-247).
-
-Which series to trade: [docs/kalshi-tickers.txt](docs/kalshi-tickers.txt) lists the crypto 15-minute and daily temperature series, with their settlement sources (always read a market's rules before trading it). Working with a coding agent? Point it at [AGENTS.md](AGENTS.md).
-
-`uv run nem help` lists every command with its options; `uv run nem help run` shows one in detail.
-
-More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
-
-### Suggested starting settings
-
-Once you've recorded data (weeks, not hours), sweep a few settings of a strategy:
-
-```bash
-uv run nem suggest paper fav90 --data data/nem.db \
-  --grid signal.threshold=0.86,0.88,0.90,0.92 --grid gates.0.value=0.94,0.96,0.98
-```
-
-- Each `--grid` is a setting (a dotted path into the strategy, list items by position) and the values to try. Keep it to one or two settings with a handful of values.
-- The data is split in time: settings are chosen on the earliest 70% (`--holdout 0.3`) and only checked on the rest, never chosen from it.
-- The choice favors a broad region of decent settings over the single best cell, shrinks small samples toward zero edge, and treats variants with fewer than `--min-trades` (30) trades as unknown.
-- The result is `suggested`, `rejected` (nothing looked profitable, or it clearly lost on the later data) or `insufficient` (not enough trades). It prints a train vs test table and the grid.
-- `--write` appends the suggestion as `<strategy>_suggested` to the portfolio file, next to the original, so both paper-trade side by side.
-
 ## Reading the statistics
 
 `nem summary` (and `make demo`) print this for every strategy:
@@ -201,7 +225,7 @@ uv run nem suggest paper fav90 --data data/nem.db \
 
 Tune the test with `--edge 0.03`, `--alpha`, `--power`.
 
-## Reports (CSV, Google Sheets)
+## Reports (CSV, JSON, Google Sheets)
 
 **Sample:** [live paper-trading report](https://docs.google.com/spreadsheets/d/1ky1-ilFsvnDLwWVcjeTkvoWh3sUKh4DMgYDnd9wsVy8/edit?usp=sharing)
 (Google Sheets, view only, updated every 5 minutes from a NEM server).
@@ -212,6 +236,8 @@ Reporting runs as its own process, so reports keep flowing even when no strategy
 uv run nem report                 # print and publish once
 uv run nem report --every 5m      # keep publishing
 ```
+
+Every `nem report` also writes `summary.json` and `status.json` into `out/` (`--json-dir` to change it), which NEM Desk reads alongside the CSVs.
 
 Each portfolio chooses where its reports go, with a top-level `reporting:` list in its
 file in `portfolios/` (next to `starting_balance`, not inside `strategies:`):
@@ -250,11 +276,55 @@ Edit portfolio files while it runs: changes are picked up on the next tick, and 
 
 ## NEM Desk
 
-A desktop app (macOS, Windows; read-only apart from an opt-in halt/resume) for looking at what the engine exports: portfolios with verdict badges, strategy detail, trades, backtest sweeps, recorded markets, engine status, and Kalshi's public markets. It reads a folder of `out/` files, a server it syncs over SSH, or the published Google Sheet; it never computes statistics, places orders or holds Kalshi keys. See [apps/desk/README.md](apps/desk/README.md) for install, screens and shortcuts.
+A desktop app (macOS, Windows) for looking at what the engine exports. It's read-only apart from an opt-in halt/resume over SSH: it never computes statistics, places orders or holds Kalshi keys.
 
-| Portfolios | Backtests heatmap |
-|---|---|
-| ![NEM Desk Portfolios screen](apps/desk/docs/screenshots/portfolios.png) | ![NEM Desk Backtests heatmap](apps/desk/docs/screenshots/backtests.png) |
+| Key | Screen | What it shows |
+|---|---|---|
+| Cmd/Ctrl+1 | Portfolios | Equity, P&L vs holding cash, strategies with verdict badges |
+| Cmd/Ctrl+2 | Strategy | Win rate and edge intervals vs break-even, sequential test, P&L and drawdown, calibration, signal reasons |
+| Cmd/Ctrl+3 | Compare | 2 to 4 strategies (retired included) side by side |
+| Cmd/Ctrl+4 | Trades | Sortable, filterable blotter with CSV export |
+| Cmd/Ctrl+5 | Market | Recorded markets: top of book, depth, feed values at the time they were known |
+| Cmd/Ctrl+6 | Backtests | `nem suggest` sweeps: heatmap, chosen cell, train vs held-out test |
+| Cmd/Ctrl+7 | Feeds and Status | Engine health, heartbeats, halts |
+| Cmd/Ctrl+8 | Sources and Settings | Folders, VPS sync, Google Sheet, display options, diagnostics |
+| Cmd/Ctrl+9 | Explore | Kalshi's public markets, order books and settlement rules |
+
+| Trades | Market | Explore |
+|---|---|---|
+| ![Trades](apps/desk/docs/screenshots/trades.png) | ![Market](apps/desk/docs/screenshots/market.png) | ![Explore](apps/desk/docs/screenshots/explore.png) |
+
+- **Sources:** a local `out/` folder, a server synced over SSH (system `ssh` + `rsync`, your existing keys), or a Google Sheet shared as "Anyone with the link: Viewer". A snapshot `nem.db` next to the source feeds the Market screen.
+- **Install:** build from source (`cd apps/desk && npm ci && npm run dist` for macOS `.dmg`s, `npm run dist:win` for Windows). Builds are unsigned, so each OS warns once; [apps/desk/README.md](apps/desk/README.md#install) has the first-open steps, every shortcut, and how each source works.
+- **Data contract:** the engine and the desk only meet through versioned schemas in [contract/](contract/README.md) (CSV columns, JSON documents, units, timestamps), so either side can change without silently breaking the other.
+
+## Design principles
+
+- **Same code for backtest, paper and live.** Only the data sources (market and feeds) and the broker change, so a strategy can't behave differently in replay than it does live.
+- **No look-ahead.** Signals and gates only see results that settled, and feed values that were published, *before* the current time. This is enforced in one place and tested.
+- **Every signal is logged with a reason**, including the ones that were skipped, so you can measure what each gate actually did.
+- **Kalshi's fees and interest are part of every number.** Paper fills charge Kalshi's taker fee (rounded up to the cent, per order) and walk the real orderbook, so entry prices include slippage. Edge and break-even win rate are computed after fees. Paper portfolios can accrue Kalshi's interest (APY on cash and open positions, accrued daily), so a strategy has to beat simply holding cash to look good.
+- **Idempotent orders.** Order IDs are deterministic, so a retry can never double-fill.
+- **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed. Risk limits use `null` for "disabled", never `0`.
+- **Secrets only from environment variables.** Nothing secret is ever in a config file or a commit; [gitleaks](https://github.com/gitleaks/gitleaks) runs on every commit and in CI.
+
+## Roadmap
+
+| | Milestone | What it adds |
+|---|---|---|
+| ✅ | **M0 Skeleton** | Packaging (uv), lint (ruff), strict typing (pyright), tests (pytest), secret scanning, CI |
+| ✅ | **M1 Core** | Portfolio/strategy config with validation, plugin registry, SQLite store, look-ahead-safe strategy context, Kalshi window-code math |
+| ✅ | **M2 Market data** | Kalshi read client and auth, `nem record` to collect market snapshots and settlements, replay from recorded data |
+| ✅ | **M3 Paper trading** | The trading loop; plugin interfaces for signals, gates, sizing, risk and feeds; paper broker with Kalshi fees, realistic fills and interest accrual; `extreme_favorite`, `max_entry_price`, `time_in_window`, `fixed` / `percent` / `kelly` sizing; `nem init` / `nem portfolio` / `nem strategy` commands; `make demo` |
+| ✅ | **M4 Stats & reporting** | Win rate with confidence intervals vs break-even, P&L, drawdown, "enough trades to decide yet?" test, CSV + Google Sheets reports |
+| ✅ | **M5 24/7 operation** | systemd services and runbook, one process for trading + recording, config hot-reload, `nem status` / `nem halt` / `nem resume` |
+| ✅ | **M6 External feeds** | Coinbase spot and NWS forecast feeds, recorded by `known_at`; market strikes recorded with snapshots; `feed_agrees` and `feed_threshold` gates |
+| ✅ | **M7 Backtest & suggested settings** | `nem replay` over recorded market and feed data through the same loop; `nem suggest` sweeps a small grid in one pass, picks a stable region on the earlier data, and checks it on later data it never saw |
+| ✅ | **NEM Desk** | Desktop app over the engine's exports; data contract 1.0 (versioned CSV/JSON schemas); `nem report` writes JSON for the desk |
+| ⬜ | **M8 Live trading** | Live broker on Kalshi (demo first), risk manager, budgets across live portfolios |
+| ⬜ | **M9 Docs** | Lessons from running live, "write a signal / feed" guides, a worked case study |
+
+Later: exits before settlement, and deeper agent tooling (hypothesis in plain English → portfolio config).
 
 ## Development
 
@@ -264,6 +334,8 @@ Requires [uv](https://docs.astral.sh/uv/) and [gitleaks](https://github.com/gitl
 make setup    # install dependencies and pre-commit hooks
 make check    # lint, type-check, test
 make fmt      # auto-fix lint and formatting
+
+cd apps/desk && npm ci && npm run check   # desk: lint, type-check, unit tests (Node 24)
 ```
 
 ## Requirements

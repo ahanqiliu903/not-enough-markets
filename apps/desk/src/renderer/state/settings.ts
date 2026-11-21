@@ -54,7 +54,7 @@ export const useSettings = create<SettingsState>()(
     (set) => ({
       pixelAccents: true,
       fontSize: FONT_SIZE_DEFAULT,
-      navWidth: 232,
+      navWidth: 256,
       setPixelAccents: (on) => set({ pixelAccents: on }),
       setFontSize: (px) => set({ fontSize: clampFontSize(px) }),
       setNavWidth: (px) => set({ navWidth: clampNav(px) }),
