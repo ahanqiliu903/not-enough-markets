@@ -65,7 +65,11 @@ async function shot(name: string): Promise<void> {
   );
   const text = await page.evaluate(() => document.body.innerText);
   expect(text).not.toContain(homedir());
-  expect(text.toLowerCase()).not.toContain(userInfo().username.toLowerCase());
+  // The OS user as it would leak: in a path or as user@host. A bare substring check is wrong
+  // on CI, where the user is "runner" and the sample status shows a process named runner.
+  const user = userInfo().username.toLowerCase();
+  const lower = text.toLowerCase();
+  for (const leak of [`/${user}/`, `\\${user}\\`, `${user}@`]) expect(lower).not.toContain(leak);
   expect(text).not.toContain(work);
   if (shotDir === undefined) return;
   await page.mouse.move(0, 0);
