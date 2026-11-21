@@ -1,0 +1,1 @@
+schema_version,portfolio,strategy,series,status,trades,wins,open,win_rate,win_rate_lo,win_rate_hi,break_even_rate,edge_cents,edge_lo_cents,edge_hi_cents,z,p,pnl_usd,pnl_per_trade_usd,roi,max_drawdown_usd,trades_to_detect,trades_to_detect_edge_cents,verdict,brier

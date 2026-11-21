@@ -12,7 +12,14 @@ from nem.core.types import Signal
 from nem.reporting.base import Reporter
 from nem.reporting.csv_reporter import CsvReporter
 from nem.reporting.sheets import SheetsError, SheetsReporter
-from nem.stats.report import PortfolioReport, build_report, render_all, tables, verdict
+from nem.stats.report import (
+    SUMMARY_COLUMNS,
+    PortfolioReport,
+    build_report,
+    render_all,
+    tables,
+    verdict,
+)
 from nem.store import Store
 
 from engine_helpers import portfolio, strategy
@@ -82,14 +89,27 @@ def test_tables_shape() -> None:
     for t in (summary, strategies, trades):
         assert all(len(row) == len(t.columns) for row in t.rows)
     assert len(strategies.rows) == 2
-    assert len(trades.rows) == 3  # settled only
+    trade_rows = [dict(zip(trades.columns, r, strict=True)) for r in trades.rows]
+    assert [t["result"] for t in trade_rows] == ["won", "won", "lost", "open"]
+    assert trade_rows[3]["settled_at"] is None and trade_rows[3]["pnl_usd"] is None
     row = dict(zip(strategies.columns, strategies.rows[0], strict=True))
-    assert (row["strategy"], row["trades"], row["wins"], row["sprt"]) == (
+    assert (row["strategy"], row["trades"], row["wins"], row["open"], row["verdict"]) == (
         "fav90",
         3,
         2,
+        1,
         "undecided",
     )
+    assert row["schema_version"] == "1.0"
+    lo, edge = row["edge_lo_cents"], row["edge_cents"]
+    assert isinstance(lo, float) and isinstance(edge, float) and lo <= edge
+    s = dict(zip(summary.columns, summary.rows[0], strict=True))
+    assert str(s["as_of"]).endswith("Z")
+    assert s["interest_apy"] is None and s["pnl_vs_cash_usd"] is None  # null, not 0
+    with_apy = dict(
+        zip(SUMMARY_COLUMNS, tables(report(interest_apy=0.0365))[0].rows[0], strict=True)
+    )
+    assert with_apy["pnl_vs_cash_usd"] is not None
 
 
 def test_csv_reporter(tmp_path: Path) -> None:
@@ -100,8 +120,9 @@ def test_csv_reporter(tmp_path: Path) -> None:
     assert files == ["strategies.csv", "summary.csv", "trades.csv"]
     with (tmp_path / "research" / "trades.csv").open() as f:
         rows = list(csv.DictReader(f))
-    assert len(rows) == 3
+    assert len(rows) == 4  # 3 settled + 1 open
     assert rows[0]["strategy"] == "fav90"
+    assert rows[3]["result"] == "open" and rows[3]["pnl_usd"] == ""  # missing is empty
     assert where.endswith("research")
 
 
@@ -146,8 +167,8 @@ def test_sheets_reporter_writes_portfolio_tabs(monkeypatch: pytest.MonkeyPatch) 
     assert sorted(sheet.tabs) == ["research strategies", "research summary", "research trades"]
     assert sheet.tabs["research summary"].cleared == 1  # existing tab reused and cleared
     trades = sheet.tabs["research trades"].values
-    assert trades[0][0] == "portfolio"
-    assert len(trades) == 4  # header + 3 settled trades
+    assert trades[0][:2] == ["schema_version", "portfolio"]
+    assert len(trades) == 5  # header + 3 settled + 1 open
     assert all(v is not None for row in trades for v in row)  # None -> ""
 
 

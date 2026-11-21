@@ -1,0 +1,97 @@
+name: Desk release
+
+# DESK-018: a `desk-vX.Y.Z` tag builds unsigned installers (macOS dmg arm64 + x64, Windows
+# NSIS x64) and attaches them to a DRAFT GitHub Release. A maintainer reviews and publishes
+# the draft by hand. No secrets: only the built-in GITHUB_TOKEN, and only the release job
+# may write. Actions are pinned to commit SHAs.
+
+on:
+  push:
+    tags: ["desk-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desk-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac
+            files: |
+              apps/desk/release/*.dmg
+          - os: windows-latest
+            target: --win
+            files: |
+              apps/desk/release/*.exe
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/desk
+    env:
+      # Never look for (or use) a signing certificate; builds are unsigned by decision.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desk/package-lock.json
+      # The app's version is the tag's: refuse a tag that doesn't match package.json.
+      - name: Check tag matches package.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "desk-v$version" ]; then
+            echo "::error::tag $TAG does not match apps/desk/package.json version $version (expected desk-v$version)"
+            exit 1
+          fi
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      # Same checks as desk.yml; once is enough (the unit tests assume POSIX paths in places).
+      - if: runner.os == 'macOS'
+        run: npm run check
+      - run: npx electron-vite build
+      - run: npx electron-builder ${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desk-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: desk-*
+          path: dist
+          merge-multiple: true
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -la dist
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --verify-tag \
+            --title "NEM Desk ${TAG#desk-v}" \
+            --notes "Unsigned build. macOS: open the .dmg for your Mac (arm64 = Apple Silicon, x64 = Intel), drag NEM Desk to Applications, then allow it once in System Settings > Privacy & Security > Open Anyway. Windows: run the installer and choose More info > Run anyway at the SmartScreen prompt. See apps/desk/README.md#install."

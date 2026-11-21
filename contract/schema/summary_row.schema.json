@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "summary_row.schema.json",
+  "title": "Portfolio summary row",
+  "description": "One row of out/<portfolio>/summary.csv and the <portfolio> summary Sheets tab.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "portfolio",
+    "mode",
+    "as_of",
+    "started_at",
+    "starting_balance_usd",
+    "realized_pnl_usd",
+    "interest_usd",
+    "equity_usd",
+    "return_rate",
+    "open_positions",
+    "open_cost_usd",
+    "interest_apy",
+    "cash_benchmark_usd",
+    "pnl_vs_cash_usd"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "report layout version; the app accepts major 1"
+    },
+    "portfolio": {
+      "type": "string",
+      "description": "portfolio name"
+    },
+    "mode": {
+      "type": "string",
+      "description": "paper or live",
+      "enum": [
+        "paper",
+        "live"
+      ]
+    },
+    "as_of": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "when the report was built"
+    },
+    "started_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "first trade or ledger entry; null before any activity"
+    },
+    "starting_balance_usd": {
+      "type": "number",
+      "description": "paper starting balance or live budget"
+    },
+    "realized_pnl_usd": {
+      "type": "number",
+      "description": "sum of settled trades' P&L, after fees"
+    },
+    "interest_usd": {
+      "type": "number",
+      "description": "interest credited so far"
+    },
+    "equity_usd": {
+      "type": "number",
+      "description": "starting balance + realized P&L + interest"
+    },
+    "return_rate": {
+      "type": "number",
+      "description": "(equity - start) / start"
+    },
+    "open_positions": {
+      "type": "integer",
+      "description": "open trades",
+      "minimum": 0
+    },
+    "open_cost_usd": {
+      "type": "number",
+      "description": "cash tied up in open trades, at cost"
+    },
+    "interest_apy": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "configured APY on cash; null = no interest modelled",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "cash_benchmark_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "what holding cash at interest_apy would have earned"
+    },
+    "pnl_vs_cash_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "(equity - start) - cash_benchmark_usd"
+    }
+  },
+  "additionalProperties": true
+}

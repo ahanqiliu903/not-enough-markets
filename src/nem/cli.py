@@ -1,6 +1,7 @@
 """Command-line entry point."""
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Sequence
@@ -149,6 +150,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
         "--expect", default="runner", help="processes that should be up, comma-separated"
     )
     st.add_argument("--max-age", default="2m", help="heartbeat older than this is stale")
+    st.add_argument("--json", action="store_true", help="machine-readable output")
 
     for name, help_text in (
         ("halt", "kill switch: stop new entries (everything, a portfolio, or one strategy)"),
@@ -184,6 +186,10 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
     sug.add_argument(
         "--write", action="store_true", help="append the suggestion to the portfolio file"
     )
+    sug.add_argument(
+        "--save", type=Path, default=Path("out/backtests"),
+        help="folder for the run's JSON, read by NEM Desk (default: out/backtests)",
+    )  # fmt: skip
 
     demo = cmds.add(sub, "demo", "replay the bundled sample data with the example portfolios")
     demo.add_argument("--data", type=Path, default=DEMO_DATA, help="recorded fixture (.jsonl.gz)")
@@ -200,14 +206,19 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
         p.add_argument("--power", type=float, default=0.8, help="chance of detecting the edge")
         return p
 
-    with_stats(
+    summ = with_stats(
         with_dir(cmds.add(sub, "summary", "statistics per strategy: win rate vs break-even"))
     )
+    summ.add_argument("--json", action="store_true", help="machine-readable output")
     rpt = with_stats(with_dir(cmds.add(
         sub, "report", "statistics, published to each portfolio's reporters (CSV, Sheets)"
     )))  # fmt: skip
     rpt.add_argument("--every", help="repeat on this schedule, e.g. 5m (default: once)")
     rpt.add_argument("--no-publish", action="store_true", help="print only")
+    rpt.add_argument(
+        "--json-dir", type=Path, default=Path("out"),
+        help="also write summary.json and status.json here, for NEM Desk (default: out)",
+    )  # fmt: skip
 
     rec = with_db(cmds.add(sub, "record", "record Kalshi market data without trading"))
     rec.add_argument(
@@ -391,15 +402,18 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_status(args: argparse.Namespace) -> int:
     from nem.core.config import load_portfolios, parse_duration
-    from nem.ops import render_status
+    from nem.ops import render_status, status_data
     from nem.store import Store
 
     portfolios = load_portfolios(args.dir) if args.dir.is_dir() else []
     expect = [x for x in args.expect.split(",") if x]
+    now, max_age = datetime.now(UTC), parse_duration(args.max_age)
     with Store(args.db) as store:
-        text, healthy = render_status(
-            store, portfolios, datetime.now(UTC), expect, parse_duration(args.max_age)
-        )
+        if args.json:
+            data = status_data(store, portfolios, now, expect, max_age)
+            print(json.dumps(data, indent=2))
+            return 0 if data["healthy"] else 2
+        text, healthy = render_status(store, portfolios, now, expect, max_age)
     print(text)
     return 0 if healthy else 2
 
@@ -468,6 +482,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 
 def cmd_suggest(args: argparse.Namespace) -> int:
+    from nem.backtest.export import run_data, save_run
     from nem.backtest.suggest import render_suggestion, strategy_yaml, suggest
     from nem.backtest.sweep import run_sweep, split
     from nem.manage import append_strategy, portfolio_path
@@ -493,6 +508,12 @@ def cmd_suggest(args: argparse.Namespace) -> int:
         results = run_sweep(data, base, args.strategy, grid, [train, test])
     s = suggest(grid, results[train], results[test], min_trades=args.min_trades)
     print(render_suggestion(s, grid))
+    run = run_data(
+        s, grid, portfolio=base.name, strategy=args.strategy, series=strategy.series,
+        train=train, test=test, train_results=results[train], min_trades=args.min_trades,
+        created_at=datetime.now(UTC).replace(microsecond=0),
+    )  # fmt: skip
+    print(f"\nrun saved: {save_run(run, args.save)}")
     if s.status != "suggested":
         return 0
     block = strategy_yaml(s, args.strategy)
@@ -544,11 +565,16 @@ def _render(store: "Store", portfolios: "list[PortfolioConfig]", now: datetime) 
 
 
 def cmd_summary(args: argparse.Namespace) -> int:
-    from nem.stats.report import render_all
+    from nem.stats.report import SCHEMA_VERSION, render_all, report_data
     from nem.store import Store
 
     with Store(args.db) as store:
-        print(render_all(_reports(store, _load(args.dir), datetime.now(UTC), args)))
+        reports = _reports(store, _load(args.dir), datetime.now(UTC), args)
+    if args.json:
+        data = {"schema_version": SCHEMA_VERSION, "portfolios": [report_data(r) for r in reports]}
+        print(json.dumps(data, indent=2))
+    else:
+        print(render_all(reports))
     return 0
 
 
@@ -595,10 +621,41 @@ def cmd_report(args: argparse.Namespace) -> int:
                         except Exception as e:
                             log.error("%s reporter for %s failed: %s", reporter.name,
                                       report.portfolio.name, e)  # fmt: skip
+                try:
+                    _write_json_reports(args.json_dir, store, portfolios, reports, now)
+                except OSError as e:
+                    log.error("writing JSON reports to %s failed: %s", args.json_dir, e)
             store.heartbeat(now, "reporter", "ok")
             if every is None:
                 return 0
             time.sleep(every)
+
+
+def _write_json_reports(
+    directory: Path,
+    store: "Store",
+    portfolios: "list[PortfolioConfig]",
+    reports: "list[PortfolioReport]",
+    now: datetime,
+) -> None:
+    """The same documents as `nem summary --json` and `nem status --json`."""
+    from datetime import timedelta
+
+    from nem.ops import status_data
+    from nem.stats.report import SCHEMA_VERSION, report_data
+
+    directory.mkdir(parents=True, exist_ok=True)
+    docs = {
+        "summary.json": {
+            "schema_version": SCHEMA_VERSION, "portfolios": [report_data(r) for r in reports],
+        },
+        "status.json": status_data(store, portfolios, now, [], timedelta(minutes=2)),
+    }  # fmt: skip
+    for name, doc in docs.items():
+        target = directory / name
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(doc, indent=2) + "\n")
+        tmp.replace(target)  # readers never see a half-written file
 
 
 def cmd_record(args: argparse.Namespace) -> int:

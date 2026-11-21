@@ -59,6 +59,51 @@ def _ago(now: datetime, ts: datetime | None) -> str:
     return f"{s // 86400}d ago"
 
 
+def status_data(
+    store: Store,
+    portfolios: Sequence[PortfolioConfig],
+    now: datetime,
+    expect: Sequence[str],
+    max_age: timedelta,
+) -> dict[str, object]:
+    """`nem status --json`: the same facts as the text, for programs (contract/schema)."""
+    from nem.stats.report import SCHEMA_VERSION, iso
+
+    names = list(dict.fromkeys([*expect, *sorted(store.processes())]))
+    health = process_health(store, names, now, max_age)
+    strategies: list[dict[str, object]] = []
+    for p in portfolios:
+        for s in p.strategies:
+            halted = store.halted(p.name, s.name) if s.status == "active" else None
+            strategies.append({
+                "portfolio": p.name, "strategy": s.name, "series": s.series,
+                "status": s.status, "halted_by": halted,
+                "open": len(store.open_trades(strategy=(p.name, s.name))),
+                "settled": len(store.settled_trades(strategies=[(p.name, s.name)])),
+                "last_signal_at": iso(store.last_signal(p.name, s.name)),
+            })  # fmt: skip
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "as_of": iso(now),
+        "healthy": all(h.healthy for h in health if h.name in expect),
+        "processes": [
+            {
+                "name": h.name,
+                "state": h.state,
+                "last_heartbeat_at": iso(h.last),
+                "detail": h.detail,
+                "expected": h.name in expect,
+            }
+            for h in health
+        ],
+        "halts": [
+            {"scope": scope, "reason": reason, "since": iso(ts)}
+            for scope, reason, ts in store.halts()
+        ],
+        "strategies": strategies,
+    }
+
+
 def render_status(
     store: Store,
     portfolios: Sequence[PortfolioConfig],

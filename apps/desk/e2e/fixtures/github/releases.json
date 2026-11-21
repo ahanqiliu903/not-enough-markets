@@ -1,0 +1,26 @@
+[
+  {
+    "tag_name": "desk-v99.0.0",
+    "name": "NEM Desk 99.0.0 (e2e fixture)",
+    "draft": false,
+    "prerelease": false,
+    "html_url": "https://github.com/ahanqiliu903/not-enough-markets/releases/tag/desk-v99.0.0",
+    "published_at": "2026-11-20T00:00:00Z"
+  },
+  {
+    "tag_name": "desk-v100.0.0",
+    "name": "draft, ignored",
+    "draft": true,
+    "prerelease": false,
+    "html_url": "https://github.com/ahanqiliu903/not-enough-markets/releases/tag/desk-v100.0.0",
+    "published_at": null
+  },
+  {
+    "tag_name": "v1.0.0",
+    "name": "engine release, ignored",
+    "draft": false,
+    "prerelease": false,
+    "html_url": "https://github.com/ahanqiliu903/not-enough-markets/releases/tag/v1.0.0",
+    "published_at": "2026-11-19T00:00:00Z"
+  }
+]

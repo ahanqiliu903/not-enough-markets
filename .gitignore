@@ -35,3 +35,7 @@ template-bot-handoff.md
 .DS_Store
 .idea/
 .vscode/
+
+# Contract fixtures are generated test data, committed on purpose (contract/README.md)
+!contract/fixtures/**/*.db
+!contract/fixtures/**/out/

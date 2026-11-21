@@ -1,0 +1,560 @@
+/* All colors come from tokens in theme.ts (written as CSS custom properties). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size);
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--dim);
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--font-mono);
+}
+
+kbd {
+  border: 1px solid var(--border);
+  padding: 0 4px;
+  font-size: var(--fs-xs);
+  color: var(--dim);
+}
+
+a {
+  color: var(--amber);
+}
+
+::selection {
+  background: var(--amber-soft);
+}
+
+/* Visible focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+/* Numbers: tabular, right-aligned. Never the pixel font. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---------- pixel accents ---------- */
+
+.pixel-font {
+  font-family: var(--font-pixel);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+html[data-pixel="off"] .pixel-font {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.pixel-icon {
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  image-rendering: pixelated;
+}
+/* Keep the 16x16 box so turning accents off never moves anything. */
+html[data-pixel="off"] .pixel-icon {
+  visibility: hidden;
+}
+
+/* Stepped "pixel" corners drawn with shadows, which don't affect layout. Every card-like box
+   gets them (cards, panel boxes, state boxes, lore cards); `--frame` picks the color, so an
+   error box or an active tile keeps its own border color. Accents off: a plain 1px border. */
+.pixel-border {
+  border: 1px solid var(--frame, var(--border));
+}
+.card {
+  border: 1px solid var(--frame, var(--border));
+}
+html[data-pixel="on"] :is(.pixel-border, .card, .panel-box, .state) {
+  box-shadow:
+    2px 0 0 0 var(--frame, var(--border)),
+    -2px 0 0 0 var(--frame, var(--border)),
+    0 2px 0 0 var(--frame, var(--border)),
+    0 -2px 0 0 var(--frame, var(--border));
+}
+/* Card-title icons sit on the title's baseline row. */
+.card-icon {
+  color: var(--amber);
+  align-self: center;
+}
+
+/* ---------- shell ---------- */
+
+.shell {
+  display: grid;
+  grid-template-rows: var(--bar-height) minmax(0, 1fr) var(--status-height);
+  height: 100%;
+}
+
+.command-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 0 var(--gap);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  height: var(--bar-height);
+}
+.command-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--amber);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.command-trigger {
+  flex: 1;
+  max-width: 560px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  background: var(--bg);
+  border-color: var(--amber);
+}
+.command-mode {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.nav-pane {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow: auto;
+  min-width: 0;
+}
+.nav-pane ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+}
+.nav-item:hover {
+  background: var(--bg);
+}
+.nav-item.active {
+  border-left-color: var(--amber);
+  color: var(--amber);
+  background: var(--bg);
+}
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-flex;
+}
+.nav-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-key {
+  border: 0;
+}
+
+.splitter {
+  cursor: col-resize;
+  background: var(--bg);
+  touch-action: none;
+}
+.splitter:hover,
+.splitter:focus-visible {
+  background: var(--border);
+}
+
+.main-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+}
+.pane-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--pane-title-height);
+  padding: 0 var(--gap);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.pane-title-text {
+  margin: 0;
+  font-size: var(--fs-lg);
+  color: var(--amber);
+  line-height: var(--pane-title-height);
+  height: var(--pane-title-height);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pane-title-actions {
+  margin-left: auto;
+}
+.pane-body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--gap);
+}
+
+.status-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 var(--gap);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.status-spacer {
+  flex: 1;
+}
+
+/* ---------- palette ---------- */
+
+.palette-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  z-index: 100;
+}
+.palette {
+  width: min(640px, 90vw);
+  background: var(--panel);
+  border: 1px solid var(--amber);
+}
+.palette-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  outline: none;
+}
+.palette-input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 0 var(--amber);
+}
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 50vh;
+  overflow: auto;
+}
+.palette-item,
+.palette-empty {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+.palette-item.active {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.palette-group {
+  width: 6.5em;
+  flex: none;
+  font-size: var(--fs-xs);
+}
+.palette-title {
+  flex: 1;
+}
+
+/* ---------- tier badge / lore card ---------- */
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 10.5em;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  background: var(--bg);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.tier-badge-label {
+  line-height: 16px;
+}
+/* Pixel accents: notched 2px frame in the tier color, a faint tier-tinted fill and a darker
+   bottom step. All shadows, so the badge's box is the same with accents off. */
+html[data-pixel="on"] .tier-badge {
+  background: color-mix(in srgb, currentColor 12%, var(--bg));
+  box-shadow:
+    1px 0 0 0 currentColor,
+    -1px 0 0 0 currentColor,
+    0 1px 0 0 currentColor,
+    0 -1px 0 0 currentColor,
+    inset 0 -2px 0 0 color-mix(in srgb, currentColor 28%, var(--bg));
+}
+.tier-common {
+  color: var(--tier-common);
+}
+.tier-rare {
+  color: var(--tier-rare);
+}
+.tier-legendary {
+  color: var(--tier-legendary);
+}
+.tier-cursed {
+  color: var(--tier-cursed);
+}
+
+.lore-anchor {
+  position: relative;
+  display: inline-block;
+}
+.lore-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 20em;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+.lore-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.lore-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.lore-stat-label {
+  color: var(--dim);
+}
+
+/* ---------- states ---------- */
+
+.state {
+  max-width: 720px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.state-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: var(--fs-md);
+  color: var(--amber);
+}
+.state-error {
+  --frame: var(--down);
+  border-color: var(--down);
+}
+.state-error .state-title {
+  color: var(--down);
+}
+.state-commands {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+}
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0 0 6px;
+}
+.kv dt {
+  color: var(--dim);
+}
+.kv dd {
+  margin: 0;
+}
+
+.banner {
+  padding: 4px 8px;
+  margin-bottom: var(--gap);
+  border: 1px solid var(--amber);
+  color: var(--text);
+  background: var(--amber-soft);
+}
+.banner strong {
+  color: var(--amber);
+  margin-right: 6px;
+}
+.banner .pixel-icon {
+  color: var(--amber);
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+
+/* ---------- value flash ---------- */
+
+.flash-up {
+  background: var(--up-soft);
+  color: var(--up);
+}
+.flash-down {
+  background: var(--down-soft);
+  color: var(--down);
+}
+.flash-up,
+.flash-down {
+  transition: background-color var(--flash-ms) linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash-up,
+  .flash-down {
+    background: none;
+    color: inherit;
+    transition: none;
+  }
+}
+
+/* ---------- generic layout helpers ---------- */
+
+.screen-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.section-title {
+  margin: 0 0 8px;
+  font-size: var(--fs-md);
+  color: var(--amber);
+}
+.row-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.plain-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+}
+.form-row label {
+  width: 10em;
+}
+.icon-sample {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+table.grid {
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+table.grid th,
+table.grid td {
+  height: var(--row-height);
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  text-align: left;
+}
+table.grid th {
+  color: var(--dim);
+  font-weight: 400;
+}
+table.grid th.num,
+table.grid td.num {
+  text-align: right;
+}
+.swatch {
+  display: inline-block;
+  width: 28px;
+  height: 14px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}

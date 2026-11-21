@@ -23,11 +23,13 @@ sheets = [
 [dependency-groups]
 dev = [
     "gspread>=6.2.1",
+    "jsonschema>=4.26.0",
     "pre-commit>=4",
     "pyright>=1.1.400",
     "pytest>=8",
     "pytest-cov>=6",
     "ruff>=0.12",
+    "types-jsonschema>=4.26.0.20261006",
     "types-pyyaml>=6.0.12.20260906",
 ]
 
@@ -46,7 +48,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 known-local-folder = ["engine_helpers", "factories", "kalshi_mock"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "contract"]
 extraPaths = ["tests"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"

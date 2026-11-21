@@ -1,0 +1,304 @@
+/* Explore (DESK-024). Colors only via theme tokens. Market tiles use amber/neutral: tier
+   colors are reserved for strategy verdicts. Pixel styling only on frames, icons, headers
+   and cards (.pixel-border / .pixel-font / .pixel-icon); prices and tables stay monospace. */
+
+.explore {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.explore-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+  font-size: var(--fs-sm);
+}
+.explore-crumbs-note {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--amber);
+  cursor: pointer;
+}
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.explore-browse {
+  display: grid;
+  grid-template-columns: 11em minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.explore-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.explore-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg);
+  text-align: left;
+}
+.explore-tab.active {
+  --frame: var(--amber);
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.explore-tab-label {
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.explore-note {
+  margin: 0 0 8px;
+  font-size: var(--fs-sm);
+  max-width: 72em;
+}
+
+.series-grid {
+  list-style: none;
+  margin: 0;
+  padding: 2px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.series-tile {
+  position: relative;
+  background: var(--bg);
+  height: 112px;
+}
+.series-tile.active {
+  --frame: var(--amber);
+  border-color: var(--amber);
+}
+.series-tile-open {
+  display: grid;
+  grid-template-rows: 34px 18px 18px 1fr;
+  justify-items: start;
+  width: 100%;
+  height: 100%;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.series-tile-open:hover .series-tile-ticker,
+.series-tile.active .series-tile-ticker {
+  color: var(--amber);
+}
+.series-tile-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+}
+.series-tile-ticker {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+}
+.series-tile-label {
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.series-tile-stats {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-self: end;
+  font-size: var(--fs-xs);
+}
+.series-tile-rules {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+.rules-chip {
+  display: inline-block;
+  padding: 0 4px;
+  height: 16px;
+  line-height: 16px;
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--amber);
+  cursor: help;
+}
+.lore-anchor:hover .rules-chip,
+.lore-trigger:focus-visible .rules-chip {
+  border-color: var(--amber);
+}
+.series-tile-rules .lore-card,
+.explore-table .lore-card {
+  left: auto;
+  right: 0;
+}
+.explore .lore-card {
+  max-width: 34em;
+  min-width: 24em;
+}
+.lore-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.lore-text {
+  white-space: normal;
+  font-size: var(--fs-sm);
+}
+.lore-note {
+  color: var(--dim);
+}
+.explore .lore-card .lore-stat .num {
+  text-align: right;
+  white-space: normal;
+}
+
+.explore-search {
+  width: min(32em, 100%);
+  height: 24px;
+  padding: 0 8px;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.explore-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.explore-header .section-title {
+  margin: 0;
+}
+
+.explore-table tbody tr {
+  cursor: pointer;
+}
+.explore-table tbody tr.active {
+  background: var(--amber-soft);
+}
+.explore-table tbody tr.active .link-button {
+  color: var(--amber);
+}
+
+.start-strategy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.start-button {
+  height: 24px;
+  color: var(--amber);
+  background: var(--bg);
+}
+.start-command {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  user-select: all;
+}
+.start-status {
+  font-size: var(--fs-xs);
+  min-height: 1em;
+}
+
+.market-facts {
+  margin: 0;
+}
+
+.book-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 18em));
+  gap: 16px;
+}
+.book-side {
+  background: var(--bg);
+  padding: 6px 10px 10px;
+}
+.book-side-title {
+  margin: 0 0 4px;
+  font-size: var(--fs-md);
+  color: var(--amber);
+}
+.book-best {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.book-best-price {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.book-ladder {
+  width: 100%;
+  margin-top: 4px;
+}
+.book-ladder caption {
+  text-align: left;
+  font-size: var(--fs-xs);
+}
+
+.tob-chart {
+  margin: 0;
+  max-width: 40em;
+}
+.tob-chart svg {
+  width: 100%;
+  height: 160px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.tob-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.tob-tick {
+  fill: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.tob-ask,
+.tob-bid {
+  fill: none;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.tob-ask {
+  stroke: var(--amber);
+}
+.tob-bid {
+  stroke: var(--text);
+}
+.tob-legend {
+  font-size: var(--fs-xs);
+}
+.tob-key-ask {
+  color: var(--amber);
+}
+.tob-key-bid {
+  color: var(--text);
+}
+.chart-empty {
+  margin: 0;
+}

@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+release/
+test-results/
+playwright-report/
+coverage/
+*.log
+.DS_Store
+# The repo root ignores build/; here it holds the generated app icon (DESK-022).
+!build/

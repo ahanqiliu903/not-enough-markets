@@ -1,0 +1,38 @@
+/* DESK-021 halt/resume controls. Colors only via theme tokens. */
+.halt-controls {
+  border-color: var(--amber);
+}
+.halt-where {
+  overflow-wrap: anywhere;
+}
+.halt-form {
+  margin-top: 8px;
+}
+.halt-form h4 {
+  margin: 0 0 4px;
+  font-size: var(--fs-xs);
+  color: var(--amber);
+  text-transform: uppercase;
+}
+.halt-form input,
+.halt-form select {
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.halt-form input:focus,
+.halt-form select:focus {
+  border-color: var(--amber);
+  outline: none;
+}
+.halt-output {
+  margin: 4px 0 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

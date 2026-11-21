@@ -1,0 +1,14 @@
+/* DESK-019 update notice. Colors only via theme tokens. */
+.update-link {
+  border: 0;
+  padding: 0;
+  height: auto;
+  background: none;
+  color: var(--amber);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.update-link:hover {
+  background: none;
+}

@@ -8,6 +8,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
+        exclude: ^contract/fixtures/  # generated test data, committed on purpose
       - id: check-merge-conflict
       - id: check-yaml
       - id: check-toml
