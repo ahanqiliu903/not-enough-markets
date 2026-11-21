@@ -148,6 +148,60 @@ export interface BacktestRunInfo {
   status: "suggested" | "rejected" | "insufficient";
 }
 
+/** `variant_metrics.schema.json`: one variant's metrics on one window (engine values). */
+export interface VariantMetrics {
+  trades: number;
+  wins: number;
+  win_rate: number | null;
+  win_rate_lo: number | null;
+  win_rate_hi: number | null;
+  break_even_rate: number | null;
+  edge_cents: number | null;
+  edge_lo_cents: number | null;
+  edge_hi_cents: number | null;
+  z: number | null;
+  p: number | null;
+  pnl_usd: number;
+  pnl_per_trade_usd: number | null;
+  roi: number | null;
+  max_drawdown_usd: number;
+  trades_to_detect: number | null;
+  trades_to_detect_edge_cents: number;
+  verdict: Verdict;
+  brier: number | null;
+}
+
+export interface BacktestVariant {
+  name: string;
+  /** Grid path -> value for this variant. */
+  overrides: Record<string, unknown>;
+  /** Position of each value in `grid[k].values`, one entry per grid axis. */
+  index: number[];
+  train: VariantMetrics;
+  /** Held-out metrics; present for the chosen variant only, by design. */
+  test: VariantMetrics | null;
+}
+
+export interface BacktestWindow {
+  start: string;
+  end: string;
+}
+
+/** A full `out/backtests/<run_id>.json` (`backtest_run.schema.json`), validated in main. */
+export interface BacktestRun extends BacktestRunInfo {
+  schema_version: string;
+  min_trades: number;
+  grid: { path: string; values: unknown[] }[];
+  train_window: BacktestWindow;
+  test_window: BacktestWindow;
+  chosen: string | null;
+  score_cents: number | null;
+  reasons: string[];
+  variants: BacktestVariant[];
+  /** Always null in contract 1.0 (no fill range is modelled yet). */
+  fill_estimate: Record<string, unknown> | null;
+}
+
 export type DataErrorKind =
   | "missing_file"
   | "unreadable"
@@ -187,9 +241,14 @@ export interface PortfolioData {
 export interface DataSource {
   id: string;
   label: string;
-  kind: "folder" | "sample" | "sqlite" | "csv" | "json";
+  kind: "folder" | "sample" | "sqlite" | "csv" | "json" | "vps";
   /** Absolute path the user picked (an `out/` folder or its parent). */
   path: string;
+  /**
+   * DESK-010: a snapshot database the user attached to this source. Without one, main looks
+   * for `nem.db` or `data/snapshot/nem.db` inside `path` (see `SourcesState.dbPaths`).
+   */
+  dbPath?: string;
 }
 
 export interface SourcesState {
@@ -197,6 +256,8 @@ export interface SourcesState {
   activeId: string | null;
   /** True when the bundled sample data folder exists (dev: contract/fixtures/basic). */
   sampleAvailable: boolean;
+  /** DESK-010: each source's database path (attached or found), null when it has none. */
+  dbPaths?: Record<string, string | null>;
 }
 
 export type SourceResult =
@@ -215,7 +276,8 @@ export interface Snapshot {
   extras: Record<string, StrategyExtras>;
   hasSummaryJson: boolean;
   status: StatusReport | null;
-  backtests: BacktestRunInfo[];
+  /** Every valid backtest run, full document (small: one sweep each), oldest file first. */
+  backtests: BacktestRun[];
   /** Problems with source-level files (summary.json, status.json, backtests, folder). */
   errors: DataError[];
   /** Newest `as_of` across summary.csv rows and status.json, for the stale banner. */

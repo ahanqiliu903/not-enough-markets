@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, statSync, watch, writeFileSync, type FSWatcher } from "node:fs";
-import { basename, dirname, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type {
   CurveKey,
   CurvesResult,
@@ -60,8 +60,41 @@ function validSource(v: unknown): v is DataSource {
     typeof s["id"] === "string" &&
     typeof s["label"] === "string" &&
     typeof s["path"] === "string" &&
-    (s["kind"] === "folder" || s["kind"] === "sample")
+    (s["kind"] === "folder" || s["kind"] === "sample" || s["kind"] === "vps") &&
+    (s["dbPath"] === undefined || typeof s["dbPath"] === "string")
   );
+}
+
+/** Where a source keeps its snapshot DB when none is attached (VPS cache, ~/nem-cache, repo root). */
+export const DB_CANDIDATES = ["nem.db", join("data", "snapshot", "nem.db")] as const;
+
+function isFile(p: string): boolean {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** The source's database: the attached file, else the first candidate that exists. */
+export function dbPathFor(source: DataSource): string | null {
+  if (source.dbPath !== undefined) return source.dbPath;
+  for (const c of DB_CANDIDATES) {
+    const p = join(source.path, c);
+    if (isFile(p)) return p;
+  }
+  return null;
+}
+
+function dbStamp(source: DataSource): string {
+  const p = dbPathFor(source);
+  if (p === null) return "db:-";
+  try {
+    const st = statSync(p);
+    return `db:${p}:${st.ino}:${st.mtimeMs}:${st.size}`;
+  } catch {
+    return `db:${p}:-`;
+  }
 }
 
 export class SourceManager {
@@ -110,7 +143,68 @@ export class SourceManager {
       sources: [...this.sources],
       activeId: this.activeId,
       sampleAvailable: this.opts.samplePath !== null && isDir(this.opts.samplePath),
+      // Omitted with no sources, so the empty state keeps its DESK-004 shape.
+      ...(this.sources.length > 0 ? { dbPaths: Object.fromEntries(this.sources.map((s) => [s.id, dbPathFor(s)])) } : {}),
     };
+  }
+
+  /** The active source's database path, or null (DESK-010). */
+  activeDbPath(): string | null {
+    const s = this.active();
+    return s === null ? null : dbPathFor(s);
+  }
+
+  /** Attaches a snapshot database file to a source (`path` already checked by the caller). */
+  attachDb(id: unknown, path: unknown): SourceResult {
+    const s = this.sources.find((x) => x.id === id);
+    if (s === undefined) return { ok: false, state: this.state(), message: "Unknown source." };
+    if (typeof path !== "string" || path.length === 0 || path.length > 4096 || !isAbsolute(path)) {
+      return { ok: false, state: this.state(), message: "Pick an absolute database file path." };
+    }
+    const abs = resolve(path);
+    if (!isFile(abs)) return { ok: false, state: this.state(), message: `File not found: ${abs}` };
+    s.dbPath = abs;
+    this.write();
+    if (s.id === this.activeId) this.rewatch();
+    this.bump();
+    return { ok: true, state: this.state(), source: s };
+  }
+
+  detachDb(id: unknown): SourcesState {
+    const s = this.sources.find((x) => x.id === id);
+    if (s?.dbPath !== undefined) {
+      delete s.dbPath;
+      this.write();
+      if (s.id === this.activeId) this.rewatch();
+      this.bump();
+    }
+    return this.state();
+  }
+
+  /**
+   * Adds or refreshes a source the app manages itself (the VPS cache, DESK-013) under a
+   * fixed id, and makes it active.
+   */
+  upsertManaged(source: DataSource): SourceResult {
+    if (!isDir(source.path)) return { ok: false, state: this.state(), message: `Folder not found: ${source.path}` };
+    const existing = this.sources.find((s) => s.id === source.id);
+    if (existing === undefined) {
+      this.sources.push({ ...source });
+      return this.activate(this.sources[this.sources.length - 1] ?? source);
+    }
+    existing.label = source.label;
+    existing.path = source.path;
+    existing.kind = source.kind;
+    if (existing.id === this.activeId) {
+      this.write();
+      this.checkForChanges();
+      return { ok: true, state: this.state(), source: existing };
+    }
+    return this.activate(existing);
+  }
+
+  private fp(s: DataSource): string {
+    return `${fingerprint(s.path)}|${dbStamp(s)}`;
   }
 
   active(): DataSource | null {
@@ -183,7 +277,7 @@ export class SourceManager {
   checkForChanges(): boolean {
     const s = this.active();
     if (s === null) return false;
-    const fp = fingerprint(s.path);
+    const fp = this.fp(s);
     if (fp === this.lastFp) return false;
     this.lastFp = fp;
     this.bump();
@@ -194,7 +288,7 @@ export class SourceManager {
     this.watcher?.close();
     this.watcher = null;
     const s = this.active();
-    this.lastFp = s === null ? "" : fingerprint(s.path);
+    this.lastFp = s === null ? "" : this.fp(s);
     if (this.opts.watch === false) return;
     if (this.poll === null) {
       this.poll = setInterval(() => this.checkForChanges(), POLL_MS);
@@ -219,7 +313,7 @@ export class SourceManager {
   private load(): { source: DataSource; loaded: LoadedSource } | null {
     const s = this.active();
     if (s === null) return null;
-    const fp = fingerprint(s.path);
+    const fp = this.fp(s);
     if (fp !== this.lastFp) {
       // Changed before the poll/watch noticed: count it now so every path agrees.
       this.lastFp = fp;

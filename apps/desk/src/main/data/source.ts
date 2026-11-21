@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import {
   CONTRACT_MAJOR,
-  type BacktestRunInfo,
+  type BacktestRun,
   type DataError,
   type PortfolioData,
   type StatusReport,
@@ -39,7 +39,7 @@ export interface LoadedSource {
   extras: Record<string, StrategyExtras>;
   hasSummaryJson: boolean;
   status: StatusReport | null;
-  backtests: BacktestRunInfo[];
+  backtests: BacktestRun[];
   errors: DataError[];
   newestAsOf: string | null;
 }
@@ -168,9 +168,7 @@ interface SummaryReportDoc {
   portfolios: { strategies: (StrategyRow & StrategyExtras)[] }[];
 }
 
-interface BacktestDoc extends Omit<BacktestRunInfo, "file"> {
-  schema_version: string;
-}
+type BacktestDoc = Omit<BacktestRun, "file">;
 
 function findJson(dirs: string[], file: string): string | null {
   for (const d of dirs) {
@@ -232,7 +230,7 @@ export function loadSource(root: string): LoadedSource {
     }
   }
 
-  const backtests: BacktestRunInfo[] = [];
+  const backtests: BacktestRun[] = [];
   const btDir = join(outDir, "backtests");
   if (isDir(btDir)) {
     let names: string[] = [];
@@ -247,18 +245,7 @@ export function loadSource(root: string): LoadedSource {
       if (text === null) continue;
       const r = parseJsonDoc<BacktestDoc>(text, file, "backtest_run.schema.json");
       errors.push(...r.errors);
-      if (r.doc !== null) {
-        const d = r.doc;
-        backtests.push({
-          file,
-          run_id: d.run_id,
-          created_at: d.created_at,
-          portfolio: d.portfolio,
-          strategy: d.strategy,
-          series: d.series,
-          status: d.status,
-        });
-      }
+      if (r.doc !== null) backtests.push({ ...r.doc, file });
     }
   }
 

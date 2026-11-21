@@ -1,0 +1,16 @@
+/* Feeds and Status (DESK-014). Colors only via theme variables. */
+
+.health-ok,
+.proc-ok {
+  color: var(--up);
+  border-color: var(--up);
+}
+.health-bad,
+.proc-stale,
+.proc-never {
+  color: var(--down);
+  border-color: var(--down);
+}
+.proc-failing {
+  color: var(--amber);
+}

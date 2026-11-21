@@ -44,6 +44,13 @@ export const derivedColors = {
   "up-soft": hexAlpha(colors.up, 0.22),
   "down-soft": hexAlpha(colors.down, 0.22),
   scrim: hexAlpha(colors.bg, 0.72),
+  // Sweep heatmap cells (DESK-016): train edge sign and relative size. Not tier colors.
+  "heat-up-1": hexAlpha(colors.up, 0.14),
+  "heat-up-2": hexAlpha(colors.up, 0.3),
+  "heat-up-3": hexAlpha(colors.up, 0.5),
+  "heat-down-1": hexAlpha(colors.down, 0.14),
+  "heat-down-2": hexAlpha(colors.down, 0.3),
+  "heat-down-3": hexAlpha(colors.down, 0.5),
 } as const;
 
 /**

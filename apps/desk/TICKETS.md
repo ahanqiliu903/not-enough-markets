@@ -21,14 +21,14 @@ first-open warning is accepted, and auto-update is replaced by an "update availa
 | DESK-007 | Strategy detail | ✅ |
 | DESK-008 | Trades blotter | ✅ |
 | DESK-009 | Compare | ✅ |
-| DESK-010 | SQLite reader | ⬜ |
-| DESK-011 | Market and order book screen | ⬜ |
+| DESK-010 | SQLite reader | ✅ |
+| DESK-011 | Market and order book screen | ✅ |
 | DESK-012 | Google Sheets source | ⬜ |
-| DESK-013 | VPS sync | ⬜ |
-| DESK-014 | Feeds and Status screen | ⬜ |
-| DESK-015 | Backtest runs list and detail | ⬜ |
-| DESK-016 | Sweep heatmap | ⬜ |
-| DESK-017 | Backtest vs paper vs live | ⬜ |
+| DESK-013 | VPS sync | ✅ |
+| DESK-014 | Feeds and Status screen | ✅ |
+| DESK-015 | Backtest runs list and detail | ✅ |
+| DESK-016 | Sweep heatmap | ✅ |
+| DESK-017 | Backtest vs paper vs live | ✅ |
 | DESK-018 | Packaging (unsigned dmg + NSIS on GitHub Releases) | ⬜ |
 | DESK-019 | Update-available notice | ⬜ |
 | DESK-020 | Logs and diagnostics | ⬜ |
@@ -62,8 +62,9 @@ first-open warning is accepted, and auto-update is replaced by an "update availa
 
 ## Phase 2+
 
-- **DESK-010** SQLite read-only (`better-sqlite3`, `readonly: true`); a snapshot file
-  (`data/snapshot/nem.db` from `deploy/snapshot.sh`) or `contract/fixtures/basic/nem.db`.
+- **DESK-010** SQLite read-only; a snapshot file (`data/snapshot/nem.db` from
+  `deploy/snapshot.sh`) or `contract/fixtures/basic/nem.db`. Built on Node's `node:sqlite`
+  (works in Electron 45 and Node 24, no native module) instead of `better-sqlite3`.
 - **DESK-011** Market screen: depth (canvas), top-of-book series (uPlot), feed overlay with
   `known_at` markers.
 - **DESK-013** VPS sync: host/user/key path in settings; system `ssh` + `rsync` of

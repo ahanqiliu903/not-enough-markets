@@ -5,8 +5,8 @@ import { nem, queryKeys } from "../lib/api";
 import { isMac } from "../lib/keys";
 
 /**
- * Bottom status bar: the active source and the age of its newest `as_of`. The engine
- * heartbeat stays a placeholder until the Status screen (DESK-014) and says so.
+ * Bottom status bar: the active source and the age of its newest `as_of`, and the engine's
+ * own health verdict from status.json (DESK-014) with the newest heartbeat's age.
  */
 export function StatusBar() {
   const version = useQuery({
@@ -19,6 +19,14 @@ export function StatusBar() {
   const ok = snap.data?.state === "ok" ? snap.data.snapshot : null;
   const sourceLabel =
     ok !== null ? ok.source.label : snap.data?.state === "error" ? `${snap.data.source.label} (unavailable)` : "none";
+  const st = ok?.status ?? null;
+  const beats = (st?.processes ?? []).map((p) => p.last_heartbeat_at).filter((t): t is string => t !== null);
+  // Contract timestamps are fixed-format UTC with Z, so the newest sorts last as text.
+  const newestBeat = beats.length > 0 ? beats.reduce((a, b) => (b > a ? b : a)) : null;
+  const engine =
+    st === null
+      ? "no status.json"
+      : `${st.healthy ? "healthy" : "UNHEALTHY"}, heartbeat ${newestBeat === null ? "never" : `${formatAge(now.getTime() - Date.parse(newestBeat))} ago`}`;
   const age = ok?.newestAsOf != null ? formatAge(now.getTime() - Date.parse(ok.newestAsOf)) : "-";
   return (
     <footer className="status-bar" aria-label="Status bar">
@@ -26,7 +34,7 @@ export function StatusBar() {
         <span className="dim">source</span> {sourceLabel} <span className="dim">age</span> {age}
       </span>
       <span className="status-item" data-testid="status-heartbeat">
-        <span className="dim">engine</span> no heartbeat
+        <span className="dim">engine</span> {engine}
       </span>
       <span className="status-spacer" />
       <span className="status-item dim">

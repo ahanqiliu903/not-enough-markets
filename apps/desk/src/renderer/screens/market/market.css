@@ -1,0 +1,67 @@
+/* Market (DESK-011). Colors only via theme tokens. */
+
+.market-db {
+  margin: 0;
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.market-series {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.market-series button.active {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.market-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 26em) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.market-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.market-list-scroll {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+}
+.market-list-scroll table.grid {
+  width: 100%;
+}
+
+.market-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.market-facts {
+  margin: 0;
+}
+.market-top,
+.depth {
+  margin: 0;
+}
+.market-feed-key {
+  color: var(--text);
+  border-bottom: 2px solid var(--border);
+}
+
+.depth-canvas {
+  display: block;
+  width: 100%;
+  height: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.depth-levels {
+  margin-top: 6px;
+}

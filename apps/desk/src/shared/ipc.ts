@@ -32,6 +32,20 @@ import type {
   TradesQuery,
 } from "./data";
 
+import type {
+  DbApi,
+  DbDepth,
+  DbFeedQuery,
+  DbFeedSeries,
+  DbInfo,
+  DbMarketsPage,
+  DbMarketsQuery,
+  DbResult,
+  DbTopSeries,
+} from "./db";
+
+import type { VpsApi, VpsConfig, VpsSaveResult, VpsState, VpsSyncResult } from "./vps";
+
 /** A place the desk app can read engine output from (DESK-003/004, see ./data.ts). */
 export type { DataSource } from "./data";
 
@@ -55,6 +69,20 @@ export interface IpcChannels {
   "kalshi:market": { request: string; response: KalshiResult<KalshiMarket> };
   "kalshi:orderbook": { request: string; response: KalshiResult<OrderBook> };
   "kalshi:copyStrategyCommand": { request: string; response: KalshiResult<string> };
+  // DESK-010 SQLite reader: the active source's snapshot DB, read-only (src/main/db/).
+  "db:info": { request: void; response: DbResult<DbInfo> };
+  "db:markets": { request: DbMarketsQuery; response: DbResult<DbMarketsPage> };
+  "db:top": { request: string; response: DbResult<DbTopSeries> };
+  "db:depth": { request: { ticker: string; id?: number }; response: DbResult<DbDepth> };
+  "db:feed": { request: DbFeedQuery; response: DbResult<DbFeedSeries> };
+  "db:attach": { request: { id: string; path?: string }; response: SourceResult };
+  "db:detach": { request: { id: string }; response: SourcesState };
+  // DESK-013 VPS sync: ssh + rsync into a userData cache (src/main/vps/).
+  "vps:get": { request: void; response: VpsState };
+  "vps:save": { request: VpsConfig; response: VpsSaveResult };
+  "vps:forget": { request: void; response: VpsState };
+  "vps:sync": { request: void; response: VpsSyncResult };
+  "vps:pickKey": { request: void; response: string | null };
 }
 
 export type IpcChannel = keyof IpcChannels;
@@ -79,6 +107,18 @@ export const IPC_CHANNELS = [
   "kalshi:market",
   "kalshi:orderbook",
   "kalshi:copyStrategyCommand",
+  "db:info",
+  "db:markets",
+  "db:top",
+  "db:depth",
+  "db:feed",
+  "db:attach",
+  "db:detach",
+  "vps:get",
+  "vps:save",
+  "vps:forget",
+  "vps:sync",
+  "vps:pickKey",
 ] as const satisfies readonly IpcChannel[];
 
 // Compile-time check that IPC_CHANNELS lists every channel in IpcChannels.
@@ -114,6 +154,8 @@ export interface DataApi {
   curves: (keys: CurveKey[]) => Promise<CurvesResult>;
   /** Calls back with the new revision; returns an unsubscribe function. */
   onChanged: (callback: (revision: number) => void) => () => void;
+  /** DESK-010: read-only queries on the active source's snapshot database. */
+  db: DbApi;
 }
 
 export interface SourcesApi {
@@ -123,4 +165,9 @@ export interface SourcesApi {
   addSample: () => Promise<SourceResult>;
   remove: (id: string) => Promise<SourcesState>;
   setActive: (id: string) => Promise<SourcesState>;
+  /** DESK-010: attach a snapshot database file to a source (no path: main shows a picker). */
+  attachDb: (id: string, path?: string) => Promise<SourceResult>;
+  detachDb: (id: string) => Promise<SourcesState>;
+  /** DESK-013: VPS sync settings and "Sync now" (the cache becomes the "vps" source). */
+  vps: VpsApi;
 }

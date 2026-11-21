@@ -6,7 +6,8 @@ never computes statistics, places orders, or holds Kalshi keys.
 
 Status: shell (DESK-001/002/005), folder data layer and sources with file watching
 (DESK-003/004), and the Portfolios, Strategy, Trades and Compare screens (DESK-006..009).
-Market, Backtests and Status still show empty states.
+Backtests and Feeds and Status (DESK-014..017) read `out/backtests/*.json` and `status.json`.
+Market (DESK-011) reads a snapshot SQLite DB (DESK-010); VPS sync (DESK-013) pulls one.
 
 ## Run
 
@@ -41,7 +42,7 @@ The `.dmg` is unsigned: on first open, right-click the app and choose Open.
 Electron 45, electron-vite 6 (Vite 8) for the three bundles, React 19, TypeScript 6,
 TanStack Query 5 (data from main), Zustand 5 (navigation, settings, command registry),
 Ajv 8 + csv-parse 7 (main-process readers), TanStack Table 8 + Virtual 3 (trades blotter),
-uPlot 1.6 (P&L curves), electron-builder 26, Vitest 5 + Testing Library, Playwright 1.65.
+uPlot 1.6 (P&L and top-of-book charts), Node's built-in `node:sqlite` (snapshot DB), electron-builder 26, Vitest 5 + Testing Library, Playwright 1.65.
 Versions are pinned
 exactly in `package.json`.
 
@@ -126,6 +127,26 @@ Cmd/Ctrl+9, or type `explore SERIES` in the command bar. Read-only research on K
   `src/main/kalshi/fixtures.ts`). Unit tests also parse the engine's
   `tests/fixtures/kalshi/*.json`. No test touches the network.
 
+## Backtests and Status (screens 6 and 7)
+
+- **Backtests** (DESK-015..017, Cmd/Ctrl+6, shown once a source has `out/backtests/*.json`):
+  the run list (created, portfolio, strategy, series, engine status), then per run the grid,
+  train and held-out test windows, the chosen variant and the engine's reasons. The sweep
+  heatmap (1 or 2 grid axes; 3+ fall back to the variants table) shows each cell's train
+  edge and `n`; the chosen cell is outlined, cells under `min_trades` are dashed and dim.
+  Cell colors are `--heat-*` tokens (up/down by edge sign), never tier colors. Test metrics
+  exist for the chosen variant only, by design, and the UI says so. `fill_estimate` is null
+  in contract 1.0 and shows "not estimated". Backtest vs paper puts the chosen variant's
+  train/test next to the strategy's `strategies.csv` row (edge intervals on one axis);
+  live shows "not implemented". A DIVERGES banner appears only when the paper and test
+  edge intervals don't overlap. Main passes each run's whole validated document in the
+  snapshot (`Snapshot.backtests: BacktestRun[]`); nothing is recomputed.
+- **Feeds and Status** (DESK-014, Cmd/Ctrl+7) from `status.json`: the engine's `healthy`,
+  process heartbeats with their state (ok / failing / stale / never), halts (scope, reason,
+  since; read-only), per-strategy activity. Contract 1.0 has no feed freshness, so the
+  Feeds section says so instead of guessing. The status bar shows the engine's health and
+  the newest heartbeat's age.
+
 ## Security
 
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webviewTag: false`.
@@ -172,3 +193,35 @@ folder (`sources.json`); source folders are only read.
   builds bundle a copy of `basic/out`, `summary.json` and `status.json` as an
   extraResource (`<resources>/sample`, see `electron-builder.yml`); `nem.db` is left out.
 - e2e runs against a throwaway profile via `NEM_DESK_USER_DATA` (ignored when packaged).
+
+## Market and snapshot database (DESK-010/011, screen 5)
+
+- **Reader** (`src/main/db/`): Node's built-in `node:sqlite` (no native module, so no
+  Electron rebuild), opened `readOnly` with the `immutable=1` URI flag: no locks, no
+  `-wal`/`-shm` files, nothing written, and WAL-mode snapshots open even in read-only folders.
+  That is safe because sources are snapshot files replaced by rename (rsync,
+  `deploy/snapshot.sh`); a changed inode/size/mtime reopens. A file with a `-wal`/`-journal`
+  beside it is a live DB and is refused. `PRAGMA user_version` must be 3. Queries are limited
+  (500 markets per page, 5,000 snapshots per market, 20,000 feed values). Errors are values
+  (`no_db`, `missing_file`, `live_db`, `locked`, `not_sqlite`, `schema_version`, `query`).
+- **Which DB**: a source's attached file (Settings, "Attach DB..."), else `nem.db` or
+  `data/snapshot/nem.db` inside the source folder (never `data/nem.db`). The sample source
+  uses `contract/fixtures/basic/nem.db` (dev only; packaged builds don't bundle it).
+- **Channels** `db:info | markets | top | depth | feed` (`window.nem.data.db.*`) and
+  `db:attach | detach` (`window.nem.sources.attachDb/detachDb`).
+- **Screen**: series tabs, market list (filter, `j`/`k`), recorded settlement, top of book
+  (uPlot) with an optional feed on a right axis drawn at `known_at` plus a tick per value,
+  and depth of any snapshot (canvas; click the chart or use the slider) with a levels table.
+  Prices are shown as recorded; nothing is recomputed.
+
+## VPS sync (DESK-013)
+
+Settings → "VPS sync": host, user, port, key *path*, remote folder (default
+`/home/nem/not-enough-markets`), optional auto sync (5/15/30/60 min). Stored in userData
+`vps.json` (0600); never a password or key contents. "Sync now" runs the system `rsync`
+(spawned with an argument array, no shell) over `ssh -o BatchMode=yes -o
+StrictHostKeyChecking=yes -o PasswordAuthentication=no -o IdentitiesOnly=yes`: the host key
+must already be in your `known_hosts`, so an unknown or changed key fails closed with a
+message. It pulls `out/` (with `--delete`) and `data/snapshot/nem.db` into
+`<userData>/vps-cache/`, which becomes the `vps` source. Values are validated to a safe
+character set (key paths without spaces). Tests mock `spawn`; none contacts a server.

@@ -26,6 +26,13 @@ const api: NemApi = {
         ipcRenderer.removeListener(DATA_CHANGED_EVENT, listener);
       };
     },
+    db: {
+      info: () => invoke("db:info"),
+      markets: (query) => invoke("db:markets", query),
+      top: (ticker) => invoke("db:top", ticker),
+      depth: (ticker, id) => invoke("db:depth", id !== undefined ? { ticker, id } : { ticker }),
+      feed: (query) => invoke("db:feed", query),
+    },
   },
   sources: {
     list: () => invoke("sources:list"),
@@ -33,6 +40,15 @@ const api: NemApi = {
     addSample: () => invoke("sources:addSample"),
     remove: (id) => invoke("sources:remove", { id }),
     setActive: (id) => invoke("sources:setActive", { id }),
+    attachDb: (id, path) => invoke("db:attach", path !== undefined ? { id, path } : { id }),
+    detachDb: (id) => invoke("db:detach", { id }),
+    vps: {
+      get: () => invoke("vps:get"),
+      save: (config) => invoke("vps:save", config),
+      forget: () => invoke("vps:forget"),
+      sync: () => invoke("vps:sync"),
+      pickKey: () => invoke("vps:pickKey"),
+    },
   },
   kalshi: {
     searchSeries: (query) => invoke("kalshi:searchSeries", query),
@@ -42,6 +58,7 @@ const api: NemApi = {
     orderbook: (ticker) => invoke("kalshi:orderbook", ticker),
     copyStrategyCommand: (series) => invoke("kalshi:copyStrategyCommand", series),
   },
+
   platform: process.platform,
 };
 

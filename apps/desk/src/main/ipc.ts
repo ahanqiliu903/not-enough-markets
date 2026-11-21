@@ -2,7 +2,9 @@ import { app, ipcMain } from "electron";
 import type { IpcChannel, IpcChannels, IpcRequest, IpcResponse } from "@shared/ipc";
 import { IPC_CHANNELS } from "@shared/ipc";
 import { dataHandlers } from "./data/handlers";
+import { dbHandlers } from "./db/handlers";
 import { kalshiHandlers } from "./kalshi";
+import { startVps, vpsHandlers } from "./vps";
 
 type Handlers = {
   [C in IpcChannel]: (request: IpcRequest<C>) => IpcResponse<C> | Promise<IpcResponse<C>>;
@@ -18,9 +20,12 @@ export const handlers: Handlers = {
   "kalshi:market": (t) => kalshiHandlers.market(t),
   "kalshi:orderbook": (t) => kalshiHandlers.orderbook(t),
   "kalshi:copyStrategyCommand": (s) => kalshiHandlers.copyStrategyCommand(s),
+  ...dbHandlers,
+  ...vpsHandlers,
 };
 
 export function registerIpc(isTrustedSender: (url: string) => boolean): void {
+  startVps();
   for (const channel of IPC_CHANNELS) {
     ipcMain.handle(channel, (event, request: unknown) => {
       const url = event.senderFrame?.url ?? "";

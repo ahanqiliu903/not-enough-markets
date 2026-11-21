@@ -1,0 +1,28 @@
+/* VPS sync form (DESK-013). Colors only via theme tokens. */
+.vps-sync input:not([type="checkbox"]):not([type="range"]),
+.vps-sync select {
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.vps-sync input:focus,
+.vps-sync select:focus {
+  border-color: var(--amber);
+  outline: none;
+}
+.vps-sync input::placeholder {
+  color: var(--dim);
+}
+.vps-detail {
+  margin: 4px 0 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+}
+.vps-cache {
+  overflow-wrap: anywhere;
+}
