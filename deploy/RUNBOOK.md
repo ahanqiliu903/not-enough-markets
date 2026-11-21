@@ -112,6 +112,10 @@ rsync -az root@<server>:/home/nem/not-enough-markets/data/snapshot/nem.db ~/nem-
 rsync -az root@<server>:/home/nem/not-enough-markets/out/ ~/nem-cache/out/
 ```
 
+`out/` has each portfolio's CSVs (add `{type: csv}` to its `reporting:` line) plus
+`summary.json` and `status.json`, which `nem report` writes every cycle (`--json-dir` to
+move them). Add `~/nem-cache` as a source in NEM Desk.
+
 ## Day to day
 
 ```bash

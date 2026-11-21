@@ -19,7 +19,7 @@ import { errorField, errorMessage, validator, type SchemaName } from "./schemas"
  *
  *   <root>/out/<portfolio>/{summary,strategies,trades}.csv
  *   <root>/out/backtests/<run_id>.json
- *   <root>/summary.json, <root>/status.json        (optional)
+ *   <root>/out/summary.json or <root>/summary.json (same for status.json; optional)
  *
  * `root` may be the `out/` folder itself; then the JSON files are looked for in it and in
  * its parent. Every problem becomes a `DataError`; nothing here throws.
@@ -65,7 +65,8 @@ function isFile(p: string): boolean {
 /** Where the portfolio folders live, and where to look for summary.json / status.json. */
 export function resolveLayout(root: string): { outDir: string; jsonDirs: string[] } {
   const out = join(root, "out");
-  if (isDir(out)) return { outDir: out, jsonDirs: [root] };
+  // `nem report` writes the JSON into out/; older layouts keep it next to out/
+  if (isDir(out)) return { outDir: out, jsonDirs: [out, root] };
   return { outDir: root, jsonDirs: [root, dirname(root)] };
 }
 

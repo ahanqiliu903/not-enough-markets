@@ -215,6 +215,10 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
     )))  # fmt: skip
     rpt.add_argument("--every", help="repeat on this schedule, e.g. 5m (default: once)")
     rpt.add_argument("--no-publish", action="store_true", help="print only")
+    rpt.add_argument(
+        "--json-dir", type=Path, default=Path("out"),
+        help="also write summary.json and status.json here, for NEM Desk (default: out)",
+    )  # fmt: skip
 
     rec = with_db(cmds.add(sub, "record", "record Kalshi market data without trading"))
     rec.add_argument(
@@ -617,10 +621,41 @@ def cmd_report(args: argparse.Namespace) -> int:
                         except Exception as e:
                             log.error("%s reporter for %s failed: %s", reporter.name,
                                       report.portfolio.name, e)  # fmt: skip
+                try:
+                    _write_json_reports(args.json_dir, store, portfolios, reports, now)
+                except OSError as e:
+                    log.error("writing JSON reports to %s failed: %s", args.json_dir, e)
             store.heartbeat(now, "reporter", "ok")
             if every is None:
                 return 0
             time.sleep(every)
+
+
+def _write_json_reports(
+    directory: Path,
+    store: "Store",
+    portfolios: "list[PortfolioConfig]",
+    reports: "list[PortfolioReport]",
+    now: datetime,
+) -> None:
+    """The same documents as `nem summary --json` and `nem status --json`."""
+    from datetime import timedelta
+
+    from nem.ops import status_data
+    from nem.stats.report import SCHEMA_VERSION, report_data
+
+    directory.mkdir(parents=True, exist_ok=True)
+    docs = {
+        "summary.json": {
+            "schema_version": SCHEMA_VERSION, "portfolios": [report_data(r) for r in reports],
+        },
+        "status.json": status_data(store, portfolios, now, [], timedelta(minutes=2)),
+    }  # fmt: skip
+    for name, doc in docs.items():
+        target = directory / name
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(doc, indent=2) + "\n")
+        tmp.replace(target)  # readers never see a half-written file
 
 
 def cmd_record(args: argparse.Namespace) -> int:

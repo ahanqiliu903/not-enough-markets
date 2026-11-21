@@ -126,8 +126,12 @@ def test_replay_and_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         "feeds: []", f"feeds: []\nreporting: [{{type: csv, path: '{csv_dir}'}}]"
     )
     yaml_path.write_text(text)
-    assert run_cli("report", "--db", str(out_db), "--dir", d) == 0
+    assert run_cli("report", "--db", str(out_db), "--dir", d, "--json-dir", str(csv_dir)) == 0
     assert (csv_dir / "research" / "strategies.csv").exists()
+    # and the JSON documents NEM Desk reads, next to the CSVs
+    written = json.loads((csv_dir / "summary.json").read_text())
+    assert written["portfolios"][0]["strategies"][0]["trades"] == 1
+    assert json.loads((csv_dir / "status.json").read_text())["schema_version"] == "1.0"
     with Store(out_db) as store:
         assert store.last_heartbeat("reporter") is not None
 
@@ -210,7 +214,7 @@ def test_report_loop_picks_up_portfolio_edits(
     monkeypatch.setattr("time.sleep", fake_sleep)
     db = str(tmp_path / "nem.db")
     with pytest.raises(KeyboardInterrupt):
-        run_cli("report", "--every", "5m", "--db", db, "--dir", str(d))
+        run_cli("report", "--every", "5m", "--db", db, "--dir", str(d), "--json-dir", str(csv_dir))
     assert sleeps == 3
     assert "btc" in strategies_csv.read_text()
 

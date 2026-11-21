@@ -158,6 +158,19 @@ describe("broken fixtures produce structured errors", () => {
     expect(p?.errors).toEqual([expect.objectContaining({ kind: "missing_file", file: "out/fixture/trades.csv" })]);
   });
 
+  it("finds summary.json and status.json inside out/ (where nem report writes them)", () => {
+    const d = tmp();
+    cpSync(BASIC, d, { recursive: true });
+    for (const f of ["summary.json", "status.json"]) {
+      writeFileSync(join(d, "out", f), readFileSync(join(d, f)));
+      rmSync(join(d, f));
+    }
+    const s = loadSource(d);
+    expect(s.errors).toEqual([]);
+    expect(s.hasSummaryJson).toBe(true);
+    expect(s.status?.halts.length).toBeGreaterThan(0);
+  });
+
   it("a wrong major in summary.json blocks only that file", () => {
     const d = tmp();
     cpSync(BASIC, d, { recursive: true });
