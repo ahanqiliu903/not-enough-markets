@@ -8,6 +8,8 @@ Status: shell (DESK-001/002/005), folder data layer and sources with file watchi
 (DESK-003/004), and the Portfolios, Strategy, Trades and Compare screens (DESK-006..009).
 Backtests and Feeds and Status (DESK-014..017) read `out/backtests/*.json` and `status.json`.
 Market (DESK-011) reads a snapshot SQLite DB (DESK-010); VPS sync (DESK-013) pulls one.
+A Google Sheet the engine publishes can be a source too (DESK-012); Settings has logs and
+diagnostics (DESK-020).
 
 ## Run
 
@@ -18,7 +20,7 @@ cd apps/desk
 npm ci
 npm run dev        # Vite dev server + Electron with hot reload
 npm run build      # production bundle into out/
-npm run dist       # build + unsigned macOS .dmg into release/
+npm run dist       # build + unsigned macOS .dmgs (arm64, x64) into release/
 npm run check      # lint + typecheck + unit tests
 npm run e2e        # build, then Playwright drives the real Electron app
 ```
@@ -35,7 +37,58 @@ run `node node_modules/electron/install.js`. If Electron starts as plain Node ("
 --remote-debugging-port"), your shell has `ELECTRON_RUN_AS_NODE=1` set (some editor
 extensions export it): `env -u ELECTRON_RUN_AS_NODE npm run dev`. The e2e test strips it.
 
-The `.dmg` is unsigned: on first open, right-click the app and choose Open.
+Builds are unsigned; see [Install](#install) for the first-open steps.
+
+## Install
+
+Download the newest `desk-v*` release from
+[GitHub Releases](https://github.com/ahanqiliu903/not-enough-markets/releases). Builds are
+**unsigned** (no paid Apple Developer account, no Windows certificate), so each OS warns once.
+
+**macOS** (`NEM-Desk-<version>-arm64.dmg` for Apple Silicon, `-x64.dmg` for Intel):
+
+1. Open the `.dmg` and drag NEM Desk to Applications.
+2. Open NEM Desk. macOS says it can't verify the developer; click **Done** (not "Move to Trash").
+3. Open **System Settings → Privacy & Security**, scroll to Security, and click **Open Anyway**
+   next to "NEM Desk was blocked". Confirm with **Open Anyway** and your password.
+4. From then on it opens normally. (The app is ad-hoc signed only, which is what lets
+   Apple Silicon offer "Open Anyway" instead of calling it damaged.)
+
+**Windows** (`NEM-Desk-<version>-x64.exe`): run the installer. If SmartScreen says "Windows
+protected your PC", click **More info → Run anyway**. It installs per user (no admin).
+
+Optionally check the download against `SHA256SUMS.txt` in the release
+(`shasum -a 256 NEM-Desk-*.dmg`, or `Get-FileHash` on Windows).
+
+**Updates** (DESK-019): there is no auto-update. Once a day the app asks GitHub Releases
+whether a newer `desk-v*` release exists (main process, `GET
+https://api.github.com/repos/ahanqiliu903/not-enough-markets/releases`, no auth, redirects
+refused, drafts and pre-releases ignored) and, if so, shows "update vX.Y.Z available" in the
+status bar, which opens the release page (only `https://github.com/ahanqiliu903/not-enough-markets/releases/...`)
+in your browser. Nothing is downloaded or installed. Settings → Updates turns the daily check
+off, has "Check now", and is the only place check errors are shown. Dev and test builds never
+check on their own; `NEM_DESK_UPDATE_FIXTURE=<releases.json>` (unpackaged only) serves a
+recorded list (`e2e/updates.spec.ts`). Channels `updates:get | check | setEnabled |
+openRelease`, exposed as `window.nem.data.updates.*`; state in userData `updates.json`.
+
+## Releasing (maintainers)
+
+`.github/workflows/desk-release.yml` runs on a `desk-v*` tag: lint, typecheck and tests, then
+the macOS dmgs (macOS runner) and the Windows NSIS installer (Windows runner), attached with
+`SHA256SUMS.txt` to a **draft** GitHub Release using only the built-in `GITHUB_TOKEN`. The tag
+must equal `package.json`'s version or the build fails. To cut a release:
+
+```bash
+# 1. bump "version" in apps/desk/package.json (e.g. 0.2.0), commit, merge to main
+# 2. tag that commit and push the tag
+git tag desk-v0.2.0
+git push origin desk-v0.2.0
+# 3. review the draft on GitHub Releases, smoke-test a download, then Publish
+```
+
+Only published, non-prerelease `desk-v*` releases trigger the in-app notice. Locally,
+`npm run dist` builds both macOS dmgs into `release/` (about 125 MB each); `npm run dist:win`
+builds the Windows installer (on Windows, or macOS/Linux with Wine).
 
 ## Stack
 
@@ -225,3 +278,49 @@ must already be in your `known_hosts`, so an unknown or changed key fails closed
 message. It pulls `out/` (with `--delete`) and `data/snapshot/nem.db` into
 `<userData>/vps-cache/`, which becomes the `vps` source. Values are validated to a safe
 character set (key paths without spaces). Tests mock `spawn`; none contacts a server.
+
+## Google Sheets source (DESK-012)
+
+Settings → "Google Sheet": paste the sheet's share link (or its ID) and the portfolio names
+(tab prefixes). No Google account, API key or service account: in Sheets choose Share,
+General access "Anyone with the link", role Viewer (anyone holding the link can then read
+it). Main fetches each tab `<portfolio> summary|strategies|trades` (the `sheets` reporter's
+names) as CSV from `https://docs.google.com/spreadsheets/d/<id>/gviz/tq?tqx=out:csv&sheet=<tab>`:
+GET only, that host and path only, no cookies or auth headers, redirects never followed (a
+redirect to `accounts.google.com` means the sheet is private). At most 1 request/s, retries
+on 429 / 5xx / network errors (2 s, 4 s), auto refresh every 5 min by default (1 min
+minimum, or off), doubling up to 1 h after quota or server errors.
+
+- **Same reader as files.** gviz padding (empty columns and rows) is dropped, then each tab is
+  written to `<userData>/sheets-cache/out/<portfolio>/<tab>.csv`, which is the `sheets`
+  source: coercion, schema validation, `<SchemaError>`, paging and watching are the folder
+  source's. A background poll refreshes that source but never makes it active.
+- **Missing tabs.** gviz answers an unknown tab name with the *first* tab, so each tab must
+  have its own required columns and only rows of the requested portfolio; otherwise it is
+  `missing_tab` and its cached copy is removed (the data layer then reports the file
+  missing). A tab with no rows can't be told apart from another portfolio's empty tab.
+- **Errors are values** (`not_shared`, `not_found`, `missing_tab`, `schema`, `offline`,
+  `rate_limited`, `upstream`, `blocked`, ...), shown per tab under "Last sync". Offline or
+  private keeps the last good cache.
+- **Privacy.** The ID lives only in userData `sheets.json` (0600); the renderer sees a masked
+  form (`1AbC…9xYz`); messages and logs never contain it. "Forget sheet" deletes the ID,
+  the cache and the source.
+- **Tests** use fake responses (`src/main/sheets/sheets.test.ts`, gviz-style copies of the
+  contract fixtures) and `NEM_DESK_SHEETS_FIXTURES=<dir>` (unpackaged only; serves
+  `<dir>/<tab>.csv`) in `e2e/sheets.spec.ts`. The sheet ID in tests is made up.
+
+## Logs and diagnostics (DESK-020)
+
+- **Log file** `<userData>/logs/main.log` (macOS: `~/Library/Application Support/NEM Desk/logs/`),
+  rotated at 1 MB into `main.log.1..3`: app start, Sheets and VPS syncs, failing IPC
+  handlers, unhandled rejections, renderer/child process crashes.
+- **Settings → Diagnostics**: app/Electron version, contract version, the log file, each
+  source with its last load and problem count, the active DB, Sheets/VPS sync state and the
+  latest log lines. "Copy diagnostics" has main put the same report as text on the
+  clipboard; "Show log file" reveals it in Finder / Explorer. Channels `diag:get | copy |
+  revealLog` (`window.nem.data.diagnostics.*`).
+- **Redaction** (`src/main/log/redact.ts`) runs on every log line and every diagnostics
+  string: known values first (sheet ID → `<sheet-id>`, VPS host/user/key path, userData →
+  `<userData>`, home → `~`, OS user → `<user>`), then patterns (sheet links, 40+ character
+  tokens, private key blocks, `user@host`, IPv4, `/Users/<name>`, `.ssh/` paths, `key=`
+  parameters).

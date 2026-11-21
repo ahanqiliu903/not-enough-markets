@@ -1,6 +1,11 @@
-# Unsigned dev builds (spec Section 2: .dmg for macOS first). Signing/notarization later.
+# DESK-018 packaging. Releases are unsigned (no paid Apple account, no Windows certificate),
+# so builds need no secrets: macOS gets only an ad-hoc signature ("-", no Developer ID, no
+# notarization) and Windows none. Users see a first-open warning; see README "Install".
+# No auto-update: DESK-019 only links to a newer GitHub release, so no update metadata is made.
 appId: dev.notenoughmarkets.desk
 productName: NEM Desk
+# No spaces: GitHub Releases would rename the assets.
+artifactName: NEM-Desk-${version}-${arch}.${ext}
 directories:
   output: release
   buildResources: build
@@ -20,13 +25,29 @@ extraResources:
     to: sample/status.json
 mac:
   target:
+    # One dmg per architecture: about half the size of a universal build each.
     - target: dmg
+      arch: [arm64, x64]
   category: public.app-category.finance
-  identity: null
+  # Ad-hoc signature only. Apple Silicon refuses to run a downloaded app whose bundle has no
+  # valid signature at all ("is damaged"); ad-hoc gets the normal "Open Anyway" path instead.
+  identity: "-"
   hardenedRuntime: false
   gatekeeperAssess: false
+  notarize: false
 dmg:
   writeUpdateInfo: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # No certificate: electron-builder skips Authenticode signing; SmartScreen warns once.
+  forceCodeSigning: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  differentialPackage: false
 linux:
   target:
     - AppImage

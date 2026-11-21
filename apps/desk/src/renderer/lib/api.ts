@@ -2,6 +2,8 @@ import type { NemApi } from "@shared/ipc";
 import type { KalshiResult } from "@shared/kalshi";
 import type { DbResult } from "@shared/db";
 import type { VpsState } from "@shared/vps";
+import type { UpdateState } from "@shared/updates";
+import type { SheetsState } from "@shared/sheets";
 
 const kalshiOffline = <T>(): Promise<KalshiResult<T>> =>
   Promise.resolve({ ok: false, error: { kind: "offline", message: "Not running inside NEM Desk" } });
@@ -10,6 +12,19 @@ const offlineSources = { sources: [], activeId: null, sampleAvailable: false };
 
 const dbOffline = <T>(): Promise<DbResult<T>> =>
   Promise.resolve({ ok: false, error: { kind: "no_db", message: "Not running inside NEM Desk" } });
+
+const offlineUpdates: UpdateState = { enabled: false, current: "dev", checking: false, last: null };
+
+const offlineSheets: SheetsState = {
+  configured: false,
+  sheetMasked: null,
+  portfolios: [],
+  intervalMinutes: 5,
+  syncing: false,
+  lastSync: null,
+  nextPollAt: null,
+};
+const sheetsOffline = { kind: "not_configured" as const, message: "Not running inside NEM Desk" };
 
 const offlineVps: VpsState = { config: null, cacheDir: "", syncing: false, lastSync: null };
 
@@ -28,6 +43,17 @@ const offline: NemApi = {
     curves: () => Promise.resolve({ ok: true, curves: [] }),
     onChanged: () => () => undefined,
     db: { info: dbOffline, markets: dbOffline, top: dbOffline, depth: dbOffline, feed: dbOffline },
+    updates: {
+      get: () => Promise.resolve(offlineUpdates),
+      check: () => Promise.resolve(offlineUpdates),
+      setEnabled: () => Promise.resolve(offlineUpdates),
+      openRelease: () => Promise.resolve(false),
+    },
+    diagnostics: {
+      get: () => Promise.reject(new Error("Not running inside NEM Desk")),
+      copy: () => Promise.resolve({ ok: false, message: "Not running inside NEM Desk" }),
+      revealLog: () => Promise.resolve(false),
+    },
   },
   sources: {
     list: () => Promise.resolve({ sources: [], activeId: null, sampleAvailable: false }),
@@ -48,6 +74,13 @@ const offline: NemApi = {
           sync: { at: new Date(0).toISOString(), ok: false, steps: [], error: { kind: "not_configured", message: "Not running inside NEM Desk" } },
         }),
       pickKey: () => Promise.resolve(null),
+    },
+    sheets: {
+      get: () => Promise.resolve(offlineSheets),
+      save: () => Promise.resolve({ ok: false, state: offlineSheets, error: sheetsOffline }),
+      forget: () => Promise.resolve(offlineSheets),
+      sync: () =>
+        Promise.resolve({ state: offlineSheets, sync: { at: new Date(0).toISOString(), ok: false, tabs: [], error: sheetsOffline } }),
     },
   },
   kalshi: {
@@ -77,4 +110,8 @@ export const queryKeys = {
   // Under "data" so a data:changed push (new snapshot DB, VPS sync) refetches them too.
   db: ["data", "db"] as const,
   vps: ["vps"] as const,
+  // Not under "data": a data:changed push needn't refetch it (it never hits the network anyway).
+  updates: ["updates"] as const,
+  sheets: ["sheets"] as const,
+  diagnostics: ["diagnostics"] as const,
 };

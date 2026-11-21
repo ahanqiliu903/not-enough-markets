@@ -26,6 +26,12 @@ import { pnlCurves, TradeIndex, tradesCsv } from "./trades";
  */
 
 export const SAMPLE_ID = "sample";
+
+export interface LoadInfo {
+  at: string;
+  errorCount: number;
+  errors: string[];
+}
 const POLL_MS = 1000;
 const DEBOUNCE_MS = 150;
 
@@ -60,7 +66,7 @@ function validSource(v: unknown): v is DataSource {
     typeof s["id"] === "string" &&
     typeof s["label"] === "string" &&
     typeof s["path"] === "string" &&
-    (s["kind"] === "folder" || s["kind"] === "sample" || s["kind"] === "vps") &&
+    (s["kind"] === "folder" || s["kind"] === "sample" || s["kind"] === "vps" || s["kind"] === "sheets") &&
     (s["dbPath"] === undefined || typeof s["dbPath"] === "string")
   );
 }
@@ -107,6 +113,8 @@ export class SourceManager {
   private poll: ReturnType<typeof setInterval> | null = null;
   private debounce: ReturnType<typeof setTimeout> | null = null;
   private lastFp = "";
+  /** DESK-020 diagnostics: when each source was last read and what it reported. */
+  private readonly lastLoads = new Map<string, LoadInfo>();
 
   constructor(private readonly opts: SourceManagerOptions) {
     this.read();
@@ -322,8 +330,16 @@ export class SourceManager {
     }
     if (this.loaded?.id !== s.id || this.loaded.fp !== fp) {
       this.loaded = { id: s.id, fp, source: loadSource(s.path) };
+      const src = this.loaded.source;
+      const errors = [...src.errors, ...src.portfolios.flatMap((p) => p.errors)];
+      this.lastLoads.set(s.id, { at: new Date().toISOString(), errorCount: errors.length, errors: errors.slice(0, 10).map((e) => `${e.file}: ${e.message}`) });
     }
     return { source: s, loaded: this.loaded.source };
+  }
+
+  /** Last load of each source this session (DESK-020 diagnostics). */
+  loadInfo(id: string): LoadInfo | null {
+    return this.lastLoads.get(id) ?? null;
   }
 
   snapshot(): SnapshotResult {

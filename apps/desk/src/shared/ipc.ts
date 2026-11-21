@@ -46,6 +46,12 @@ import type {
 
 import type { VpsApi, VpsConfig, VpsSaveResult, VpsState, VpsSyncResult } from "./vps";
 
+import type { UpdateState, UpdatesApi } from "./updates";
+
+import type { SheetsApi, SheetsSaveRequest, SheetsSaveResult, SheetsState, SheetsSyncResult } from "./sheets";
+
+import type { DiagCopyResult, Diagnostics, DiagnosticsApi } from "./diagnostics";
+
 /** A place the desk app can read engine output from (DESK-003/004, see ./data.ts). */
 export type { DataSource } from "./data";
 
@@ -83,6 +89,20 @@ export interface IpcChannels {
   "vps:forget": { request: void; response: VpsState };
   "vps:sync": { request: void; response: VpsSyncResult };
   "vps:pickKey": { request: void; response: string | null };
+  // DESK-019 update-available notice: GitHub Releases, GET only (src/main/updates/).
+  "updates:get": { request: void; response: UpdateState };
+  "updates:check": { request: void; response: UpdateState };
+  "updates:setEnabled": { request: boolean; response: UpdateState };
+  "updates:openRelease": { request: void; response: boolean };
+  // DESK-012 Google Sheets source: public CSV export into a userData cache (src/main/sheets/).
+  "sheets:get": { request: void; response: SheetsState };
+  "sheets:save": { request: SheetsSaveRequest; response: SheetsSaveResult };
+  "sheets:forget": { request: void; response: SheetsState };
+  "sheets:sync": { request: void; response: SheetsSyncResult };
+  // DESK-020 logs and diagnostics, redacted in main (src/main/diagnostics.ts).
+  "diag:get": { request: void; response: Diagnostics };
+  "diag:copy": { request: void; response: DiagCopyResult };
+  "diag:revealLog": { request: void; response: boolean };
 }
 
 export type IpcChannel = keyof IpcChannels;
@@ -119,6 +139,17 @@ export const IPC_CHANNELS = [
   "vps:forget",
   "vps:sync",
   "vps:pickKey",
+  "updates:get",
+  "updates:check",
+  "updates:setEnabled",
+  "updates:openRelease",
+  "sheets:get",
+  "sheets:save",
+  "sheets:forget",
+  "sheets:sync",
+  "diag:get",
+  "diag:copy",
+  "diag:revealLog",
 ] as const satisfies readonly IpcChannel[];
 
 // Compile-time check that IPC_CHANNELS lists every channel in IpcChannels.
@@ -156,6 +187,10 @@ export interface DataApi {
   onChanged: (callback: (revision: number) => void) => () => void;
   /** DESK-010: read-only queries on the active source's snapshot database. */
   db: DbApi;
+  /** DESK-019: "update available" check against GitHub Releases (never downloads). */
+  updates: UpdatesApi;
+  /** DESK-020: app, contract, sources, DB and recent log lines, redacted in main. */
+  diagnostics: DiagnosticsApi;
 }
 
 export interface SourcesApi {
@@ -170,4 +205,6 @@ export interface SourcesApi {
   detachDb: (id: string) => Promise<SourcesState>;
   /** DESK-013: VPS sync settings and "Sync now" (the cache becomes the "vps" source). */
   vps: VpsApi;
+  /** DESK-012: a Google Sheet shared "anyone with the link" (the cache becomes the "sheets" source). */
+  sheets: SheetsApi;
 }

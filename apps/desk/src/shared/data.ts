@@ -241,7 +241,7 @@ export interface PortfolioData {
 export interface DataSource {
   id: string;
   label: string;
-  kind: "folder" | "sample" | "sqlite" | "csv" | "json" | "vps";
+  kind: "folder" | "sample" | "sqlite" | "csv" | "json" | "vps" | "sheets";
   /** Absolute path the user picked (an `out/` folder or its parent). */
   path: string;
   /**

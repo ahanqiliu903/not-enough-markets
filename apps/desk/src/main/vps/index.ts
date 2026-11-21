@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { app, BrowserWindow, dialog } from "electron";
 import type { IpcChannels } from "@shared/ipc";
 import { sources } from "../data/handlers";
+import { log } from "../log";
 import { VpsManager } from "./sync";
 
 /** `vps:*` IPC handlers (DESK-013). Config and cache live in userData, never in the repo. */
@@ -11,7 +12,7 @@ export const VPS_SOURCE_ID = "vps";
 
 let manager: VpsManager | null = null;
 
-function vps(): VpsManager {
+export function vps(): VpsManager {
   manager ??= new VpsManager({
     storePath: join(app.getPath("userData"), "vps.json"),
     cacheDir: join(app.getPath("userData"), "vps-cache"),
@@ -40,6 +41,8 @@ export const vpsHandlers: VpsHandlers = {
   "vps:forget": () => vps().forget(),
   "vps:sync": async () => {
     const sync = await vps().sync();
+    const steps = sync.steps.map((st) => `${st.what} ${st.ok ? "ok" : "failed"}`).join(", ");
+    log()[sync.ok ? "info" : "warn"]("vps", `sync ${sync.ok ? "ok" : "failed"}${steps !== "" ? ` (${steps})` : ""}${sync.error !== undefined ? `; ${sync.error.kind}: ${sync.error.message}` : ""}`);
     return { state: vps().state(), sync, sources: sources().state() };
   },
   "vps:pickKey": async () => {

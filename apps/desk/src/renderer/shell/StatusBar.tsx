@@ -3,6 +3,7 @@ import { formatAge } from "../components/states";
 import { useNow, useSnapshot } from "../data/hooks";
 import { nem, queryKeys } from "../lib/api";
 import { isMac } from "../lib/keys";
+import { UpdateNotice } from "../updates";
 
 /**
  * Bottom status bar: the active source and the age of its newest `as_of`, and the engine's
@@ -37,6 +38,7 @@ export function StatusBar() {
         <span className="dim">engine</span> {engine}
       </span>
       <span className="status-spacer" />
+      <UpdateNotice />
       <span className="status-item dim">
         <kbd>{isMac() ? "Cmd" : "Ctrl"}+K</kbd> commands
       </span>

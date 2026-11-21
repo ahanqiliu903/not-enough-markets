@@ -6,6 +6,9 @@ import { ConnectSource, DATA_COMMANDS } from "../../data/states";
 import { nem } from "../../lib/api";
 import { useSettings } from "../../state/settings";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN } from "../../theme";
+import { UpdateSettings } from "../../updates";
+import { Diagnostics } from "./Diagnostics";
+import { SheetsSource } from "./SheetsSource";
 import { VpsSync } from "./VpsSync";
 
 /** A found DB inside the source shows relative to it; an attached one in full. */
@@ -106,6 +109,8 @@ export default function SettingsScreen() {
 
       <VpsSync />
 
+      <SheetsSource />
+
       <section className="section">
         <h2 className="section-title">Display</h2>
         <div className="form-row">
@@ -132,6 +137,10 @@ export default function SettingsScreen() {
           <span className="num">{fontSize}px</span>
         </div>
       </section>
+
+      <UpdateSettings />
+
+      <Diagnostics />
     </div>
   );
 }

@@ -23,15 +23,15 @@ first-open warning is accepted, and auto-update is replaced by an "update availa
 | DESK-009 | Compare | ✅ |
 | DESK-010 | SQLite reader | ✅ |
 | DESK-011 | Market and order book screen | ✅ |
-| DESK-012 | Google Sheets source | ⬜ |
+| DESK-012 | Google Sheets source | ✅ |
 | DESK-013 | VPS sync | ✅ |
 | DESK-014 | Feeds and Status screen | ✅ |
 | DESK-015 | Backtest runs list and detail | ✅ |
 | DESK-016 | Sweep heatmap | ✅ |
 | DESK-017 | Backtest vs paper vs live | ✅ |
-| DESK-018 | Packaging (unsigned dmg + NSIS on GitHub Releases) | ⬜ |
-| DESK-019 | Update-available notice | ⬜ |
-| DESK-020 | Logs and diagnostics | ⬜ |
+| DESK-018 | Packaging (unsigned dmg + NSIS on GitHub Releases) | ✅ |
+| DESK-019 | Update-available notice | ✅ |
+| DESK-020 | Logs and diagnostics | ✅ |
 | DESK-021 | Halt and resume over SSH (deferred) | ⬜ |
 | DESK-022 | Pixel accents pass | ⬜ |
 | DESK-023 | Docs and screenshots | ⬜ |
@@ -69,10 +69,19 @@ first-open warning is accepted, and auto-update is replaced by an "update availa
   `known_at` markers.
 - **DESK-013** VPS sync: host/user/key path in settings; system `ssh` + `rsync` of
   `data/snapshot/nem.db` and `out/` into a local cache; host key verified, fails closed.
+- **DESK-012** Google Sheets: no credentials. The sheet is shared "Anyone with the link:
+  Viewer"; main fetches each `<portfolio> summary|strategies|trades` tab as CSV (gviz
+  endpoint, `docs.google.com` only, GET, no cookies, redirects not followed) into a userData
+  cache read like any folder (same coercion and validation). ID kept in userData only,
+  never logged; poll every 5 min by default (1 min minimum), backoff on 429/5xx. Replaces
+  the spec's service-account + `safeStorage` design (no keys in the app).
 - **DESK-014** Status screen from `status.json` / `nem status --json` schema.
 - **DESK-015/016** Backtests from `backtest_run.schema.json`: run list, grid heatmap of train
   edge with `n` per cell, chosen cell marked, train vs test (test exists for the chosen
   variant only, by design), `fill_estimate` is null in contract 1.0.
+- **DESK-020** Logs: `<userData>/logs/main.log`, rotated at 1 MB (3 old files); Settings →
+  Diagnostics (versions, contract, sources and last loads, DB, sync state, recent lines)
+  and "Copy diagnostics"; everything redacted (sheet IDs, hosts, users, home/key paths).
 
 ## DESK-024: Explore Kalshi markets (screen 9)
 

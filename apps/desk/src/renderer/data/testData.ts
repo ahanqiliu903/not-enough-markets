@@ -161,6 +161,8 @@ export function fakeApi(o: FakeOptions = {}): Fake {
         }),
       onChanged: () => () => undefined,
       db: undefined as unknown as NemApi["data"]["db"],
+      updates: undefined as unknown as NemApi["data"]["updates"],
+      diagnostics: undefined as unknown as NemApi["data"]["diagnostics"],
     },
     sources: {
       list: () => Promise.resolve(snap.state === "none" ? { ...state, sources: [], activeId: null } : state),
@@ -174,6 +176,7 @@ export function fakeApi(o: FakeOptions = {}): Fake {
       attachDb: () => Promise.resolve({ ok: false, state, message: "cancelled" }),
       detachDb: () => Promise.resolve(state),
       vps: undefined as unknown as NemApi["sources"]["vps"],
+      sheets: undefined as unknown as NemApi["sources"]["sheets"],
     },
     kalshi: undefined as unknown as NemApi["kalshi"],
     platform: "linux",

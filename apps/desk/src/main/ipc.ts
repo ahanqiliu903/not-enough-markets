@@ -3,7 +3,12 @@ import type { IpcChannel, IpcChannels, IpcRequest, IpcResponse } from "@shared/i
 import { IPC_CHANNELS } from "@shared/ipc";
 import { dataHandlers } from "./data/handlers";
 import { dbHandlers } from "./db/handlers";
+import { diagHandlers, startDiagnostics } from "./diagnostics";
 import { kalshiHandlers } from "./kalshi";
+import { errorText } from "./log/logger";
+import { log } from "./log";
+import { sheetsHandlers, startSheets } from "./sheets";
+import { startUpdates, updatesHandlers } from "./updates";
 import { startVps, vpsHandlers } from "./vps";
 
 type Handlers = {
@@ -22,10 +27,16 @@ export const handlers: Handlers = {
   "kalshi:copyStrategyCommand": (s) => kalshiHandlers.copyStrategyCommand(s),
   ...dbHandlers,
   ...vpsHandlers,
+  ...updatesHandlers,
+  ...sheetsHandlers,
+  ...diagHandlers,
 };
 
 export function registerIpc(isTrustedSender: (url: string) => boolean): void {
+  startDiagnostics();
   startVps();
+  startUpdates();
+  startSheets();
   for (const channel of IPC_CHANNELS) {
     ipcMain.handle(channel, (event, request: unknown) => {
       const url = event.senderFrame?.url ?? "";
@@ -33,7 +44,19 @@ export function registerIpc(isTrustedSender: (url: string) => boolean): void {
         throw new Error(`IPC from untrusted frame rejected: ${channel}`);
       }
       const handler = handlers[channel] as (r: unknown) => IpcChannels[typeof channel]["response"];
-      return handler(request);
+      try {
+        const out = handler(request) as unknown;
+        if (out instanceof Promise) {
+          return out.catch((e: unknown) => {
+            log().error("ipc", `${channel} failed: ${errorText(e)}`);
+            throw e;
+          });
+        }
+        return out;
+      } catch (e) {
+        log().error("ipc", `${channel} failed: ${errorText(e)}`);
+        throw e;
+      }
     });
   }
 }

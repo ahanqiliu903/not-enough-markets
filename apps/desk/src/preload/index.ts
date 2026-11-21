@@ -33,6 +33,17 @@ const api: NemApi = {
       depth: (ticker, id) => invoke("db:depth", id !== undefined ? { ticker, id } : { ticker }),
       feed: (query) => invoke("db:feed", query),
     },
+    updates: {
+      get: () => invoke("updates:get"),
+      check: () => invoke("updates:check"),
+      setEnabled: (enabled) => invoke("updates:setEnabled", enabled),
+      openRelease: () => invoke("updates:openRelease"),
+    },
+    diagnostics: {
+      get: () => invoke("diag:get"),
+      copy: () => invoke("diag:copy"),
+      revealLog: () => invoke("diag:revealLog"),
+    },
   },
   sources: {
     list: () => invoke("sources:list"),
@@ -48,6 +59,12 @@ const api: NemApi = {
       forget: () => invoke("vps:forget"),
       sync: () => invoke("vps:sync"),
       pickKey: () => invoke("vps:pickKey"),
+    },
+    sheets: {
+      get: () => invoke("sheets:get"),
+      save: (req) => invoke("sheets:save", req),
+      forget: () => invoke("sheets:forget"),
+      sync: () => invoke("sheets:sync"),
     },
   },
   kalshi: {
