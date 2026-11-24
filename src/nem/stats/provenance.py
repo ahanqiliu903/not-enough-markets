@@ -8,9 +8,12 @@ from forward-recorded data (feeds recorded live by `nem run`) also says "edge".
 reject). Label the output with `label`.
 """
 
-from nem.core.config import StrategyConfig
+from nem.core.config import PortfolioConfig, StrategyConfig
 
 BACKFILL_LABEL = "backfilled forecasts"
+# `fills.missing_depth: quote`: a book side without recorded depth was assumed to cover the
+# whole order at its quote. Size is invented, so such results are never depth-backed.
+QUOTE_FILLS_LABEL = "quote fills: no depth, full size assumed at top of book"
 VERDICT_ORDER = ("no_edge", "undecided", "edge")  # SPRT decisions, worst to best
 
 
@@ -32,3 +35,9 @@ def uses_backfill(strategy: StrategyConfig) -> bool:
     """Whether any of the strategy's gates reads backfilled forecasts (the forecast gates'
     `backfill_sources`, nem.gates.forecast). Its verdicts then go through `cap_verdict`."""
     return any(g.params.get("backfill_sources") for g in strategy.gates)
+
+
+def uses_quote_fills(portfolio: PortfolioConfig) -> bool:
+    """Whether the portfolio fills orders at the quote when depth wasn't recorded
+    (`fills.missing_depth: quote`). Its results carry `QUOTE_FILLS_LABEL`."""
+    return portfolio.fills.missing_depth == "quote"

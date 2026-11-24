@@ -19,6 +19,13 @@ Level = tuple[float, float]  # (price, contracts); Kalshi sizes can be fractiona
 # Resting bids per side, best (highest) first.
 # Buying YES at p means lifting a NO bid at 1 - p (and vice versa).
 Depth = Mapping[Side, Sequence[Level]]
+# A side present in `depth` was recorded (an empty list is a verified empty book); a side
+# absent from it was not recorded (top of book only). What a paper fill does when the side
+# it trades against was not recorded (docs/exits-and-fills.md):
+#   none:  no fill. A quote is a price, not a size.
+#   quote: assume the top-of-book quote covers the whole order (quote-only data such as
+#          Kalshi's historical candles); results are labelled, never equal to depth-backed.
+MissingDepth = Literal["none", "quote"]
 
 
 def _require_aware(name: str, dt: datetime) -> None:

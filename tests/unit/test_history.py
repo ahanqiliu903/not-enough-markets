@@ -380,9 +380,11 @@ def test_replay_enters_at_minute_ask_and_trade_through_exits(
 def test_labels_name_both_provenances() -> None:
     gate = {"type": "source_agreement", "backfill_sources": ["iem_mos_gfs"], "min_sources": 1}
     p = portfolio(strategies=[_hist_strategy("ny", gates=[gate])])
-    assert labels([p]) == "[backfilled forecasts] [historical candles, no depth]"
+    quote = "[quote fills: no depth, full size assumed at top of book]"
+    assert labels([p]) == f"[backfilled forecasts] [historical candles, no depth] {quote}"
     assert (
-        labels([portfolio(strategies=[_hist_strategy("ny")])]) == "[historical candles, no depth]"
+        labels([portfolio(strategies=[_hist_strategy("ny")])])
+        == f"[historical candles, no depth] {quote}"
     )
 
 

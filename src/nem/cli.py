@@ -148,7 +148,13 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
     run = with_db(with_dir(cmds.add(
         sub, "run", "paper-trade every portfolio on live Kalshi prices (records data too)"
     )))  # fmt: skip
-    run.add_argument("--depth", type=int, default=10, help="orderbook levels kept for fills")
+    run.add_argument(
+        "--depth",
+        type=int,
+        default=10,
+        help="orderbook levels kept for fills (0: none, so nothing fills unless a portfolio"
+        " sets fills.missing_depth: quote)",
+    )
     run.add_argument("--once", action="store_true", help="one tick, then exit (smoke test)")
     run.add_argument(
         "--record-series", action="append", help="also record this series (repeatable)"
@@ -781,6 +787,7 @@ def cmd_suggest(args: argparse.Namespace) -> int:
     from nem.backtest.suggest import render_suggestion, strategy_yaml, suggest
     from nem.backtest.sweep import run_sweep, split
     from nem.manage import append_strategy, portfolio_path
+    from nem.stats.provenance import QUOTE_FILLS_LABEL, uses_quote_fills
     from nem.store import Store
 
     pairs: list[tuple[str, list[ParamValue]]] = args.grid
@@ -802,6 +809,8 @@ def cmd_suggest(args: argparse.Namespace) -> int:
               f"test {test.start:%Y-%m-%d %H:%M} to {test.end:%Y-%m-%d %H:%M} UTC")  # fmt: skip
         results = run_sweep(data, base, args.strategy, grid, [train, test])
     s = suggest(grid, results[train], results[test], min_trades=args.min_trades)
+    if uses_quote_fills(base):
+        print(f"[{QUOTE_FILLS_LABEL}]")
     print(render_suggestion(s, grid))
     run = run_data(
         s, grid, portfolio=base.name, strategy=args.strategy, series=strategy.series,
