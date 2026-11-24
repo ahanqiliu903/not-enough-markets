@@ -4,7 +4,7 @@ import { PixelIcon } from "../../components/PixelIcon";
 import { EmptyState } from "../../components/states";
 import { CalibrationChart, IntervalChart, LineChart, ProgressBar } from "../../data/charts";
 import { useCompare } from "../../data/compare";
-import { cents, EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, num, pct, range, signClass, signedUsd, unrealized, usd } from "../../data/format";
+import { cents, EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, num, PENDING_NOTE, pct, pendingPnl, range, signClass, signedUsd, unrealized, usd } from "../../data/format";
 import { allStrategies, findStrategy, useCurves } from "../../data/hooks";
 import { drawdownSeries } from "../../data/series";
 import { DataErrors, SourceGate } from "../../data/states";
@@ -196,9 +196,22 @@ function Detail({
                 <td className="dim">Contracts with no bids</td>
                 <td className={`num ${r.open_no_bid_contracts ? "down" : ""}`}>{noBidContracts(r.open_no_bid_contracts)}</td>
               </tr>
+              <tr title={`Open trades the observed running high/low already decides, P&L if they settle that way (${PENDING_NOTE})`}>
+                <td className="dim">Pending locked (not counted)</td>
+                <td className={`num ${signClass(r.pending_locked_pnl_usd)}`}>{pendingPnl(r.pending_locked_pnl_usd, r.pending_locked)}</td>
+              </tr>
+              <tr title={`Open trades likely decided (observed at the exact extreme, or a 98c+ price), P&L if they settle that way (${PENDING_NOTE})`}>
+                <td className="dim">Pending likely (not counted)</td>
+                <td className={`num ${signClass(r.pending_likely_pnl_usd)}`}>{pendingPnl(r.pending_likely_pnl_usd, r.pending_likely)}</td>
+              </tr>
+              <tr title="Open trades where the observed running high/low and the price disagree; not summed">
+                <td className="dim">Pending conflicts</td>
+                <td className="num">{int(r.pending_conflict)}</td>
+              </tr>
             </tbody>
           </table>
           <p className="dim">Open value: {MARK_LABEL} (engine marks; contracts without bids at $0; unmarked trades left out).</p>
+          <p className="dim">Pending: provisional results of open trades, {PENDING_NOTE}; never in P&L, win rate or verdict.</p>
           {r.excluded_trades ? (
             <p className="dim" role="note">
               {int(r.excluded_trades)} trade(s) {EXCLUDED_NOTE}.

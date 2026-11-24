@@ -46,6 +46,17 @@ export interface SummaryRow {
    * statistic and money total the engine reports.
    */
   excluded_trades: number | null;
+  /**
+   * Contract 1.1 (null when not computed or an older 1.x file lacks them): provisional
+   * results of counted open trades (`nem.settle.provisional`): P&L if the locked / likely
+   * ones settle that way, their counts, and conflicts (observed vs price, not summed).
+   * Reporting only: not counted in P&L, equity or statistics; Kalshi settles.
+   */
+  pending_locked_pnl_usd: number | null;
+  pending_likely_pnl_usd: number | null;
+  pending_locked: number | null;
+  pending_likely: number | null;
+  pending_conflict: number | null;
 }
 
 export interface StrategyRow {
@@ -91,6 +102,17 @@ export interface StrategyRow {
    * statistic and money total the engine reports.
    */
   excluded_trades: number | null;
+  /**
+   * Contract 1.1 (null when not computed or an older 1.x file lacks them): provisional
+   * results of counted open trades (`nem.settle.provisional`): P&L if the locked / likely
+   * ones settle that way, their counts, and conflicts (observed vs price, not summed).
+   * Reporting only: not counted in P&L, equity or statistics; Kalshi settles.
+   */
+  pending_locked_pnl_usd: number | null;
+  pending_likely_pnl_usd: number | null;
+  pending_locked: number | null;
+  pending_likely: number | null;
+  pending_conflict: number | null;
 }
 
 export interface TradeRow {
@@ -128,6 +150,16 @@ export interface TradeRow {
    */
   excluded: boolean | null;
   exclude_reason: string | null;
+  /**
+   * Contract 1.1 provisional result of an open trade (null when settled, not computed, or
+   * an older file): `locked_win`, `locked_loss`, `likely_win`, `likely_loss`, `conflict`,
+   * `unknown` (shown as text if unrecognised); basis `observed` / `price` / `both`; P&L if
+   * it holds; the climate day's running high/low (°F) for temperature series. Not counted.
+   */
+  provisional_result: string | null;
+  provisional_basis: string | null;
+  provisional_pnl_usd: number | null;
+  observed_extreme_f: number | null;
 }
 
 export const TRADE_COLUMNS = [
@@ -157,6 +189,11 @@ export const TRADE_COLUMNS = [
   // contract 1.1: excluded from statistics
   "excluded",
   "exclude_reason",
+  // contract 1.1: provisional result of open trades (not counted)
+  "provisional_result",
+  "provisional_basis",
+  "provisional_pnl_usd",
+  "observed_extreme_f",
 ] as const satisfies readonly (keyof TradeRow)[];
 
 export type TradeColumn = (typeof TRADE_COLUMNS)[number];

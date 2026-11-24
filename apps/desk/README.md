@@ -13,10 +13,10 @@ bundled sample data and recorded Kalshi responses) are in [docs/screenshots/](do
 
 | Key | Screen | What it shows |
 |---|---|---|
-| Cmd/Ctrl+1 | Portfolios | A card per portfolio (equity, P&L vs holding cash, open positions, open value and unrealized P&L), strategy rows with verdict badges; hover a badge for its lore card |
+| Cmd/Ctrl+1 | Portfolios | A card per portfolio (equity, P&L vs holding cash, open positions, open value and unrealized P&L, pending locked / likely P&L "not counted"), strategy rows with verdict badges; hover a badge for its lore card |
 | Cmd/Ctrl+2 | Strategy | Tier badge, win-rate and edge intervals vs break-even, SPRT progress, P&L curve and drawdown, calibration, signal reasons |
 | Cmd/Ctrl+3 | Compare | 2 to 4 strategies (retired included): P&L curves from a common start, stats, verdicts |
-| Cmd/Ctrl+4 | Trades | Virtualized blotter: sort, filter, CSV export (100k rows smooth); each open trade's mark (unrealized P&L, mark value, bid, mid; "no bids" flag when contracts are valued at $0); trades excluded from statistics muted with their reason, "Hide excluded" toggle |
+| Cmd/Ctrl+4 | Trades | Virtualized blotter: sort, filter, CSV export (100k rows smooth); each open trade's mark (unrealized P&L, mark value, bid, mid; "no bids" flag when contracts are valued at $0); trades excluded from statistics muted with their reason, "Hide excluded" toggle; "Pending" column for open trades (e.g. "locked win (obs 56°F)", "likely loss (price)") |
 | Cmd/Ctrl+5 | Market | Recorded markets from a snapshot DB: top of book, depth, feed overlay at `known_at` |
 | Cmd/Ctrl+6 | Backtests | Run list, sweep heatmap (chosen cell, `n` per cell), train vs held-out test, backtest vs paper (hidden until a source has backtests) |
 | Cmd/Ctrl+7 | Feeds and Status | Engine health, heartbeats, halts, per-strategy activity |
@@ -329,6 +329,13 @@ folder (`sources.json`); source folders are only read.
   the engine's "excluded: <reason>" flag (the trade's own money columns still shown) and can
   hide them; Portfolios and Strategy show `excluded_trades`. The engine already left them
   out of every statistic and money total; the desk never recomputes anything.
+- **Pending** (contract 1.1, `nem.settle.provisional`): an open trade's provisional result
+  (`provisional_result`, `provisional_basis`, `provisional_pnl_usd`, `observed_extreme_f`)
+  shows in the Trades "Pending" column, e.g. "locked win (obs 56°F) +$1.98", "likely loss
+  (price)", "conflict (obs 60°F vs price)"; an unrecognised value shows as text. Portfolios
+  and Strategy show `pending_locked_pnl_usd` / `pending_likely_pnl_usd` with their counts
+  and `pending_conflict`, labelled "not counted: Kalshi settles". Engine values only;
+  `-` when the engine didn't compute them (`--no-provisional`, older file).
 - **Trades** stay in main: `data:trades` filters, sorts and pages them (the sorted index is
   cached, so scrolling is a slice); `data:tradesCsv` returns the matching rows with the
   engine's own cell text for export; `data:curves` gives cumulative P&L for charts.

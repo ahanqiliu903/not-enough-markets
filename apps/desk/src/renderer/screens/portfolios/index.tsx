@@ -3,7 +3,7 @@ import type { PortfolioData, Snapshot } from "@shared/data";
 import { PixelIcon } from "../../components/PixelIcon";
 import { EmptyState } from "../../components/states";
 import { useCompare } from "../../data/compare";
-import { EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, pct, signClass, signedUsd, ts, unrealized, usd } from "../../data/format";
+import { EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, PENDING_NOTE, pct, pendingPnl, pendingSummary, signClass, signedUsd, ts, unrealized, usd } from "../../data/format";
 import { allStrategies, errorsForFile } from "../../data/hooks";
 import { DataErrors, DATA_COMMANDS, SourceGate } from "../../data/states";
 import { StrategyBadge } from "../../data/StrategyBadge";
@@ -154,6 +154,18 @@ function PortfolioCard({
             className={s.excluded_trades ? "excluded-count" : ""}
             title={`Trades ${EXCLUDED_NOTE}`}
           />
+          <Stat
+            label="Pending locked (not counted)"
+            value={pendingPnl(s.pending_locked_pnl_usd, s.pending_locked)}
+            className={signClass(s.pending_locked_pnl_usd)}
+            title={`P&L of open trades the observed running high/low already decides, if they settle that way (${PENDING_NOTE})`}
+          />
+          <Stat
+            label="Pending likely (not counted)"
+            value={pendingPnl(s.pending_likely_pnl_usd, s.pending_likely) + (s.pending_conflict ? `; ${int(s.pending_conflict)} conflict` : "")}
+            className={signClass(s.pending_likely_pnl_usd)}
+            title={`P&L of open trades likely decided (observed at the exact extreme, or a 98c+ price), if they settle that way; conflicts (observed vs price) are not summed (${PENDING_NOTE})`}
+          />
           <Stat label="Starting balance" value={usd(s.starting_balance_usd)} />
         </div>
       ) : (
@@ -183,6 +195,7 @@ function PortfolioCard({
                 <th className="num">Edge</th>
                 <th className="num">P&L</th>
                 <th className="num" title={`Open positions at ${MARK_LABEL}, minus entry cost`}>Unrealized</th>
+                <th className="num" title={`Provisional results of open trades: locked / likely P&L (count) if they settle that way; ${PENDING_NOTE}`}>Pending (not counted)</th>
                 <th>Compare</th>
               </tr>
             </thead>
@@ -216,6 +229,7 @@ function PortfolioCard({
                     <td className={`num ${signClass(r.edge_cents)}`}>{r.edge_cents === null ? "-" : `${r.edge_cents.toFixed(2)}c`}</td>
                     <td className={`num ${signClass(r.pnl_usd)}`}>{signedUsd(r.pnl_usd)}</td>
                     <td className={`num ${signClass(r.unrealized_pnl_usd)}`}>{r.open === 0 ? "-" : unrealized(r.unrealized_pnl_usd, r.open_unmarked, r.open_no_bid_contracts)}</td>
+                    <td className="num dim">{r.open === 0 ? "-" : pendingSummary(r)}</td>
                     <td className="dim">{compareIds.includes(id) ? "picked" : ""}</td>
                   </tr>
                 );

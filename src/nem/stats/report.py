@@ -12,6 +12,7 @@ from nem.core.config import PluginSpec, PortfolioConfig, RiskConfig, StrategyCon
 from nem.core.types import ManualExit, ManualLot, Trade
 from nem.execution.fees import DEFAULT_TAKER_RATE
 from nem.execution.mark import Mark, mark_position
+from nem.settle.provisional import Provisional
 from nem.stats.exits import ExitBreakdown, ExitLabel, by_exit_kind
 from nem.stats.held import HeldToSettlement, held_to_settlement
 from nem.stats.metrics import Interval, StrategyStats, cost_per_contract, strategy_stats, wilson
@@ -62,6 +63,57 @@ def open_marks(trades: Sequence[Trade], marks: dict[MarkKey, Mark]) -> OpenMarks
     )
 
 
+@dataclass(frozen=True)
+class Pending:
+    """Provisional results of open trades (nem.settle.provisional), summed over the counted
+    ones: what they would add if they settle as expected. Reporting only, never in P&L,
+    equity or statistics; Kalshi's settlement decides. Conflicts are counted, not summed."""
+
+    locked_pnl: float
+    likely_pnl: float
+    locked_won: int
+    locked_lost: int
+    likely_won: int
+    likely_lost: int
+    conflict: int
+    failed: int  # open trades whose check hit a fetch error (unknown)
+
+    @property
+    def locked(self) -> int:
+        return self.locked_won + self.locked_lost
+
+    @property
+    def likely(self) -> int:
+        return self.likely_won + self.likely_lost
+
+
+NO_PENDING = Pending(0.0, 0.0, 0, 0, 0, 0, 0, 0)
+
+
+def pending_totals(
+    trades: Sequence[Trade], provisional: dict[MarkKey, Provisional] | None
+) -> Pending | None:
+    """None when there are open trades but provisional results weren't computed."""
+    if not trades:
+        return NO_PENDING
+    if provisional is None:
+        return None
+    got = [p for t in trades if (p := provisional.get((t.strategy, t.window_id)))]
+
+    def n(status: str) -> int:
+        return sum(1 for p in got if p.status == status)
+
+    def pnl(prefix: str) -> float:
+        return sum(p.pnl or 0.0 for p in got if p.status.startswith(prefix))
+
+    return Pending(
+        locked_pnl=pnl("locked_"), likely_pnl=pnl("likely_"),
+        locked_won=n("locked_win"), locked_lost=n("locked_loss"),
+        likely_won=n("likely_win"), likely_lost=n("likely_loss"), conflict=n("conflict"),
+        failed=sum(1 for p in got if p.status == "unknown" and p.note),
+    )  # fmt: skip
+
+
 def mark_trades(
     store: Store, trades: Sequence[Trade], rates: dict[str, float], now: datetime
 ) -> dict[MarkKey, Mark]:
@@ -89,6 +141,8 @@ class StrategyReport:
     # engine trades split by how they ended; empty unless the strategy exits or has exited
     exits: dict[ExitLabel, ExitBreakdown] = field(default_factory=dict[ExitLabel, ExitBreakdown])
     marks: dict[MarkKey, Mark] = field(default_factory=dict[MarkKey, Mark])  # open trades only
+    # open trades' provisional results (excluded ones too); None when not computed
+    provisional: dict[MarkKey, Provisional] | None = None
 
     @property
     def counted_open(self) -> list[Trade]:
@@ -98,6 +152,10 @@ class StrategyReport:
     @property
     def open(self) -> OpenMarks:
         return open_marks(self.counted_open, self.marks)
+
+    @property
+    def pending(self) -> Pending | None:
+        return pending_totals(self.counted_open, self.provisional)
 
     @property
     def excluded(self) -> list[Trade]:
@@ -138,6 +196,7 @@ class PortfolioReport:
     # excluded trades, incl. strategies no longer in the portfolio file; left out of
     # realized, equity and open positions as if never taken
     excluded: list[Trade] = field(default_factory=list[Trade])
+    pending: Pending | None = NO_PENDING  # provisional results of open trades, not counted
 
     @property
     def equity(self) -> float:
@@ -155,7 +214,10 @@ def build_report(
     target_edge: float = 0.02,
     alpha: float = 0.05,
     power: float = 0.8,
+    provisional: dict[MarkKey, Provisional] | None = None,
 ) -> PortfolioReport:
+    """`provisional`: open trades' provisional results, computed by the caller (it needs
+    the network; nem.settle.provisional); None leaves the pending columns empty."""
     open_trades = store.open_trades(portfolio=portfolio.name, include_excluded=False)
     rates = {s.name: s.taker_rate for s in portfolio.strategies}
     marks = mark_trades(store, open_trades, rates, now)
@@ -174,6 +236,9 @@ def build_report(
                 reasons=store.signal_reasons(portfolio.name, s.name),
                 exits=_exits(store, s, counted),
                 marks={k: m for k, m in marks.items() if k[0] == s.name},
+                provisional=None
+                if provisional is None
+                else {k: v for k, v in provisional.items() if k[0] == s.name},
             )
         )
     start = portfolio.starting_balance or portfolio.budget or 0.0
@@ -199,6 +264,7 @@ def build_report(
         target_edge=target_edge,
         open=open_marks(open_trades, marks),
         excluded=store.excluded_trades(portfolio.name),
+        pending=pending_totals(open_trades, provisional),
     )
 
 
@@ -562,6 +628,7 @@ def render_text(report: PortfolioReport) -> str:
         f"  realized {report.realized:+,.2f}  interest {report.interest:+,.2f}",
         f"  open positions {report.open_positions} (${report.open_cost:,.2f} at cost)",
         *_open_lines(report.open, report.open_positions, "  unrealized  "),
+        *_pending_lines(report.pending, "  pending     "),
         *_excluded_lines(report.excluded, "  "),
     ]
     if report.cash_benchmark is not None:
@@ -592,6 +659,25 @@ def _open_lines(o: OpenMarks, n_open: int, prefix: str) -> list[str]:
     ]
 
 
+PENDING_NOTE = "if they settle that way; not counted, Kalshi settles"
+
+
+def _pending_lines(p: Pending | None, prefix: str) -> list[str]:
+    """Provisional results of open trades (nem.settle.provisional), when any is decided."""
+    if p is None or not (p.locked or p.likely or p.conflict or p.failed):
+        return []
+    parts: list[str] = []
+    if p.locked:
+        parts.append(f"locked {p.locked_pnl:+,.2f} ({p.locked_won} won, {p.locked_lost} lost)")
+    if p.likely:
+        parts.append(f"likely {p.likely_pnl:+,.2f} ({p.likely_won} won, {p.likely_lost} lost)")
+    if p.conflict:
+        parts.append(f"{p.conflict} conflict (observed and price disagree)")
+    if p.failed:
+        parts.append(f"{p.failed} not checked (fetch failed)")
+    return [f"{prefix}{', '.join(parts)}; {PENDING_NOTE}"]
+
+
 EXCLUDED_NOTE = "left out of P&L, equity and risk limits too"
 
 
@@ -614,6 +700,7 @@ def _render_strategies(report: PortfolioReport, lines: list[str]) -> str:
         head = f"{s.name}  {s.series}  {s.status}  {st.n} trades ({st.wins} won)"
         lines.append(f"  {label(head, uses_backfill=sr.backfilled)}, {sr.open_positions} open")
         lines += _open_lines(sr.open, sr.open_positions, "    unrealized  ")
+        lines += _pending_lines(sr.pending, "    pending     ")
         lines += _excluded_lines(sr.excluded, "    ")
         if st.n:
             ci = st.win_rate_ci
@@ -672,6 +759,9 @@ SUMMARY_COLUMNS = [
     # 1.1: open positions at liquidation value (OpenMarks)
     "open_value_usd", "unrealized_pnl_usd", "open_unmarked", "open_no_bid_contracts",
     "excluded_trades",  # 1.1: nem trade exclude
+    # 1.1: provisional results of open trades (Pending), not counted anywhere
+    "pending_locked_pnl_usd", "pending_likely_pnl_usd", "pending_locked", "pending_likely",
+    "pending_conflict",
 ]  # fmt: skip
 STRATEGY_COLUMNS = [
     "schema_version", "portfolio", "strategy", "series", "status", "trades", "wins", "open",
@@ -680,6 +770,8 @@ STRATEGY_COLUMNS = [
     "trades_to_detect", "trades_to_detect_edge_cents", "verdict", "brier",
     "open_value_usd", "unrealized_pnl_usd", "open_unmarked", "open_no_bid_contracts",  # 1.1
     "excluded_trades",  # 1.1: trades left out of the statistics above (nem trade exclude)
+    "pending_locked_pnl_usd", "pending_likely_pnl_usd", "pending_locked", "pending_likely",
+    "pending_conflict",  # 1.1: provisional results of open trades, not counted
 ]  # fmt: skip
 TRADE_COLUMNS = [
     "schema_version", "portfolio", "strategy", "window_id", "ticker", "side", "contracts",
@@ -690,6 +782,8 @@ TRADE_COLUMNS = [
     "unrealized_pnl_usd", "marked_at",
     # 1.1: excluded from statistics (nem trade exclude); "true"/"false" in CSV
     "excluded", "exclude_reason",
+    # 1.1: provisional result of an open trade (nem.settle.provisional), not counted
+    "provisional_result", "provisional_basis", "provisional_pnl_usd", "observed_extreme_f",
 ]  # fmt: skip
 
 
@@ -718,9 +812,23 @@ def _open_fields(o: OpenMarks) -> dict[str, Cell]:
     }  # fmt: skip
 
 
-def _trade_row(t: Trade, m: Mark | None = None) -> list[Cell]:
+def _pending_fields(p: Pending | None) -> dict[str, Cell]:
+    return {
+        "pending_locked_pnl_usd": _r(p.locked_pnl, 2) if p else None,
+        "pending_likely_pnl_usd": _r(p.likely_pnl, 2) if p else None,
+        "pending_locked": p.locked if p else None, "pending_likely": p.likely if p else None,
+        "pending_conflict": p.conflict if p else None,
+    }  # fmt: skip
+
+
+def _trade_row(t: Trade, m: Mark | None = None, pv: Provisional | None = None) -> list[Cell]:
     result = "open" if t.won is None else "won" if t.won else "lost"
+    pv = None if t.settled else pv
     return _row(TRADE_COLUMNS, {
+        "provisional_result": pv.status if pv else None,
+        "provisional_basis": pv.basis if pv else None,
+        "provisional_pnl_usd": _r(pv.pnl, 2) if pv else None,
+        "observed_extreme_f": pv.observed_extreme_f if pv else None,
         "mark_bid_cents": _c(m.bid) if m else None, "mark_mid_cents": _c(m.mid) if m else None,
         "mark_contracts": m.contracts if m else None,
         "mark_value_usd": _r(m.value, 2) if m else None,
@@ -774,6 +882,7 @@ def tables(report: PortfolioReport) -> list[Table]:
         "pnl_vs_cash_usd": None if report.cash_benchmark is None
         else _r(gain - report.cash_benchmark, 2),
         **_open_fields(report.open), "excluded_trades": len(report.excluded),
+        **_pending_fields(report.pending),
     })])  # fmt: skip
     strategy_rows: list[list[Cell]] = []
     trade_rows: list[list[Cell]] = []
@@ -786,10 +895,13 @@ def tables(report: PortfolioReport) -> list[Table]:
             # (see MANUAL_VERDICT) with no trades-to-detect count
             **(_MANUAL_OVERRIDES if report.manual is not None else {}),
             **_open_fields(sr.open), "excluded_trades": len(sr.excluded),
+            **_pending_fields(sr.pending),
         }))  # fmt: skip
         trade_rows += [_trade_row(t) for t in sr.trades]
+        pv = sr.provisional or {}
         trade_rows += [
-            _trade_row(t, sr.marks.get((t.strategy, t.window_id))) for t in sr.open_trades
+            _trade_row(t, sr.marks.get(k := (t.strategy, t.window_id)), pv.get(k))
+            for t in sr.open_trades
         ]
     return [
         summary,

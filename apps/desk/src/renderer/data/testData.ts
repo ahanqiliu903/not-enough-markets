@@ -38,6 +38,11 @@ export const SUMMARY: SummaryRow = {
   open_unmarked: 0,
   open_no_bid_contracts: 0,
   excluded_trades: 0,
+  pending_locked_pnl_usd: 0,
+  pending_likely_pnl_usd: 0,
+  pending_locked: 0,
+  pending_likely: 0,
+  pending_conflict: 0,
 };
 
 function strat(o: Partial<StrategyRow> & Pick<StrategyRow, "strategy" | "series" | "verdict">): StrategyRow {
@@ -68,6 +73,11 @@ function strat(o: Partial<StrategyRow> & Pick<StrategyRow, "strategy" | "series"
     open_unmarked: 0,
     open_no_bid_contracts: 0,
     excluded_trades: 0,
+    pending_locked_pnl_usd: 0,
+    pending_likely_pnl_usd: 0,
+    pending_locked: 0,
+    pending_likely: 0,
+    pending_conflict: 0,
     ...o,
   };
 }
@@ -104,6 +114,10 @@ export function trade(i: number, strategy = "btc_edge"): TradeRow {
     marked_at: null,
     excluded: false,
     exclude_reason: null,
+    provisional_result: null,
+    provisional_basis: null,
+    provisional_pnl_usd: null,
+    observed_extreme_f: null,
   };
 }
 

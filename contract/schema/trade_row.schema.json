@@ -28,7 +28,11 @@
     "unrealized_pnl_usd",
     "marked_at",
     "excluded",
-    "exclude_reason"
+    "exclude_reason",
+    "provisional_result",
+    "provisional_basis",
+    "provisional_pnl_usd",
+    "observed_extreme_f"
   ],
   "properties": {
     "schema_version": {
@@ -191,6 +195,38 @@
       ],
       "x-since": "1.1",
       "description": "why the trade was excluded, as given to nem trade exclude; null when counted"
+    },
+    "provisional_result": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "an open trade's provisional result: locked_win / locked_loss (the climate day's running high or low already decides the market, even 1°F back toward the strike), likely_win / likely_loss (observed only at the exact extreme, or a side bid / closed market's last price at 98c+; price is never locked), conflict (observed and price disagree), unknown (nothing decided yet, or a fetch failed); reporting only (nem.settle.provisional): never in realized P&L, equity, statistics or risk; Kalshi's settlement decides; null when settled or not computed; readers should show an unrecognised value as text (new values may be added in a 1.x minor)"
+    },
+    "provisional_basis": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "what the provisional result rests on: observed (NWS station observations: METAR temperatures and 6-hour max/min groups in the climate day), price (Kalshi bids or last price), both (they agree, or conflict); null when unknown"
+    },
+    "provisional_pnl_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "P&L if the provisional result holds, as settlement books it (win: contracts x (1 - price) - fee; loss: -(contracts x price + fee)); null unless a win or loss"
+    },
+    "observed_extreme_f": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "temperature series only: the climate day's running high (KXHIGH*) or low (KXLOWT*) so far, whole degrees F from NWS station observations (METAR temperatures, 6-hour max/min groups; a reading given only to a whole °C counts as its least extreme possible value); ASOS, so settlement may differ by a degree; null otherwise or when not computed"
     }
   },
   "additionalProperties": true

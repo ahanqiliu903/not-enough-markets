@@ -101,3 +101,72 @@ export function noBidContracts(v: number | null | undefined): string {
   if (!finite(v)) return NA;
   return v > 0 ? `${int(v)} (pending loss)` : "0";
 }
+
+/** What the pending (provisional) numbers are, shown wherever they are (contract 1.1). */
+export const PENDING_NOTE = "not counted: Kalshi settles";
+
+const PROVISIONAL_TEXT: Record<string, string> = {
+  locked_win: "locked win",
+  locked_loss: "locked loss",
+  likely_win: "likely win",
+  likely_loss: "likely loss",
+  conflict: "conflict",
+  unknown: "",
+};
+
+/**
+ * An open trade's provisional result, e.g. "locked win (obs 56°F)", "likely loss (price)",
+ * "conflict (obs 61°F vs price)"; "" when none or unknown. An unrecognised value shows as is.
+ */
+export function provisionalText(r: {
+  provisional_result: string | null;
+  provisional_basis: string | null;
+  observed_extreme_f: number | null;
+}): string {
+  const status = r.provisional_result;
+  if (status === null) return "";
+  const label = PROVISIONAL_TEXT[status] ?? status.replace(/_/g, " ");
+  if (label === "") return "";
+  const obs = finite(r.observed_extreme_f) ? `obs ${int(r.observed_extreme_f)}°F` : "obs";
+  const basis =
+    r.provisional_basis === "observed" ? obs
+    : r.provisional_basis === "price" ? "price"
+    : r.provisional_basis === "both" ? `${obs} ${status === "conflict" ? "vs" : "+"} price`
+    : r.provisional_basis ?? "";
+  return basis === "" ? label : `${label} (${basis})`;
+}
+
+/** CSS class for a provisional result: wins up, losses down. */
+export function provisionalClass(status: string | null): string {
+  if (status === "locked_win" || status === "likely_win") return "up";
+  if (status === "locked_loss" || status === "likely_loss") return "down";
+  return "";
+}
+
+/**
+ * Pending P&L of one kind with its count, e.g. "+$4.39 (6)"; NA when not computed (null).
+ */
+export function pendingPnl(pnl: number | null | undefined, n: number | null | undefined): string {
+  if (!finite(pnl) || !finite(n)) return NA;
+  return n > 0 ? `${signedUsd(pnl)} (${int(n)})` : "0";
+}
+
+/**
+ * A row's pending results in one cell, e.g. "locked +$0.92 (1); likely +$4.39 (6); 1 conflict";
+ * "" when nothing is pending, NA when not computed.
+ */
+export function pendingSummary(r: {
+  pending_locked_pnl_usd: number | null;
+  pending_likely_pnl_usd: number | null;
+  pending_locked: number | null;
+  pending_likely: number | null;
+  pending_conflict: number | null;
+}): string {
+  if (!finite(r.pending_locked) || !finite(r.pending_likely)) return NA;
+  const parts = [
+    ...(r.pending_locked > 0 ? [`locked ${pendingPnl(r.pending_locked_pnl_usd, r.pending_locked)}`] : []),
+    ...(r.pending_likely > 0 ? [`likely ${pendingPnl(r.pending_likely_pnl_usd, r.pending_likely)}`] : []),
+    ...(finite(r.pending_conflict) && r.pending_conflict > 0 ? [`${int(r.pending_conflict)} conflict`] : []),
+  ];
+  return parts.join("; ");
+}

@@ -77,6 +77,23 @@
   - `nem summary` text: "N excluded (M settled, P&L x not counted; left out of P&L, equity
     and risk limits too; ...)" per portfolio and strategy when N > 0.
   - Fixtures regenerated (no trade is excluded in them; every row has `excluded` false).
+- Provisional ("pending / likely") results of open trades (`nem.settle.provisional`,
+  computed by `nem summary` / `nem report` unless `--no-provisional`). New columns,
+  `"x-since": "1.1"`:
+  - `trades`: `provisional_result` (string: `locked_win`, `locked_loss`, `likely_win`,
+    `likely_loss`, `conflict`, `unknown`; no enum in the schema, so readers show a new
+    value as text), `provisional_basis` (`observed`, `price`, `both`),
+    `provisional_pnl_usd`, `observed_extreme_f` (integer). Empty for settled trades and
+    when not computed.
+  - `summary` and `strategies`: `pending_locked_pnl_usd`, `pending_likely_pnl_usd`,
+    `pending_locked`, `pending_likely`, `pending_conflict` (integers), over counted open
+    trades. 0 with no open trades, empty when not computed.
+  - Reporting only: nothing here enters realized P&L, equity, statistics, risk or
+    `Context`. `nem summary` text: a `pending` line per portfolio and strategy ("locked
+    +x (n won, m lost), likely +y (...), k conflict; if they settle that way; not counted,
+    Kalshi settles").
+  - Fixtures regenerated (no open trades in them: the pending totals are 0 and the trade
+    columns empty).
 - Emitted `schema_version` is still `1.0`; bumping it also means regenerating
   `contract/fixtures/`.
 

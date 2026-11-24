@@ -247,6 +247,29 @@ open trade frees its slot and its cash. Reports still list it (`excluded`, `excl
 in trades; `excluded_trades` counts) and `nem summary` says "N excluded (M settled, P&L x
 not counted)". Exclude for a reason you'd state up front, never to improve a verdict.
 
+### Pending results (locked / likely)
+
+Some open trades are practically decided before Kalshi settles them. `nem summary` and
+`nem report` show them as a `pending` line per portfolio and strategy, e.g.
+`pending     locked +1.98 (1 won, 0 lost), likely +3.20 (4 won, 0 lost), 1 conflict`:
+
+- **locked** (temperature series): the climate day's running high only rises and the low
+  only falls, so once every value still reachable resolves the market one way, it's
+  decided. From NWS station observations (api.weather.gov: METAR temperatures and 6-hour
+  max/min groups). Locked only if it also holds 1°F back toward the strike, since
+  settlement (The Weather Company / NWS CLI) and these observations can differ by a degree;
+  otherwise **likely**.
+- **likely** (price): a side bid at 98c+, or a closed market's last trade at 98c+ / 2c-.
+  Never locked: prices are belief (a market once traded at 1c for a side that then won).
+- **conflict**: observed and price disagree; shown, not summed.
+
+This is reporting only: **not counted** in realized P&L, equity, statistics, risk limits,
+or anything signals and gates see. Kalshi's settlement stays the only truth. It needs the
+network (one request per station and per market each run; fetch failures show as
+"not checked"); `--no-provisional` skips it. Columns: `provisional_result`,
+`provisional_basis`, `provisional_pnl_usd`, `observed_extreme_f` in trades; `pending_*`
+in summary and strategies.
+
 ## Reports (CSV, JSON, Google Sheets)
 
 **Sample:** [live paper-trading report](https://docs.google.com/spreadsheets/d/1ky1-ilFsvnDLwWVcjeTkvoWh3sUKh4DMgYDnd9wsVy8/edit?usp=sharing)
