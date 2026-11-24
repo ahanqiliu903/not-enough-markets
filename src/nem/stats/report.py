@@ -13,6 +13,7 @@ from nem.core.types import ManualExit, ManualLot, Trade
 from nem.execution.fees import DEFAULT_TAKER_RATE
 from nem.execution.mark import Mark, mark_position
 from nem.settle.provisional import Provisional
+from nem.stats.equity import EquityPoint, equity_history
 from nem.stats.exits import ExitBreakdown, ExitLabel, by_exit_kind
 from nem.stats.held import HeldToSettlement, held_to_settlement
 from nem.stats.metrics import Interval, StrategyStats, cost_per_contract, strategy_stats, wilson
@@ -197,6 +198,8 @@ class PortfolioReport:
     # realized, equity and open positions as if never taken
     excluded: list[Trade] = field(default_factory=list[Trade])
     pending: Pending | None = NO_PENDING  # provisional results of open trades, not counted
+    # portfolio value over time (nem.stats.equity); None when not asked for (build_report)
+    history: list[EquityPoint] | None = None
 
     @property
     def equity(self) -> float:
@@ -215,9 +218,12 @@ def build_report(
     alpha: float = 0.05,
     power: float = 0.8,
     provisional: dict[MarkKey, Provisional] | None = None,
+    history: bool = False,
 ) -> PortfolioReport:
     """`provisional`: open trades' provisional results, computed by the caller (it needs
-    the network; nem.settle.provisional); None leaves the pending columns empty."""
+    the network; nem.settle.provisional); None leaves the pending columns empty.
+    `history`: also compute the portfolio's value over time (the `equity` table the
+    reporters publish; it marks every open trade at every hour, so only on request)."""
     open_trades = store.open_trades(portfolio=portfolio.name, include_excluded=False)
     rates = {s.name: s.taker_rate for s in portfolio.strategies}
     marks = mark_trades(store, open_trades, rates, now)
@@ -265,6 +271,7 @@ def build_report(
         open=open_marks(open_trades, marks),
         excluded=store.excluded_trades(portfolio.name),
         pending=pending_totals(open_trades, provisional),
+        history=equity_history(store, portfolio, now) if history else None,
     )
 
 
@@ -785,6 +792,11 @@ TRADE_COLUMNS = [
     # 1.1: provisional result of an open trade (nem.settle.provisional), not counted
     "provisional_result", "provisional_basis", "provisional_pnl_usd", "observed_extreme_f",
 ]  # fmt: skip
+# 1.1: portfolio value over time (nem.stats.equity), one row per hour plus the report time
+EQUITY_COLUMNS = [
+    "schema_version", "portfolio", "ts", "book_value_usd", "realized_pnl_usd", "interest_usd",
+    "unrealized_pnl_usd", "value_usd", "open_positions", "open_unmarked",
+]  # fmt: skip
 
 
 def _r(x: float | None, digits: int = 4) -> float | None:
@@ -908,6 +920,26 @@ def tables(report: PortfolioReport) -> list[Table]:
         Table("strategies", STRATEGY_COLUMNS, strategy_rows),
         Table("trades", TRADE_COLUMNS, trade_rows),
     ]
+
+
+def equity_table(report: PortfolioReport) -> Table | None:
+    """The `equity` table (contract 1.1), or None when the report has no history."""
+    if report.history is None:
+        return None
+    name = report.portfolio.name
+    return Table("equity", EQUITY_COLUMNS, [_row(EQUITY_COLUMNS, {
+        "schema_version": SCHEMA_VERSION, "portfolio": name, "ts": iso(e.ts),
+        "book_value_usd": _r(e.book_value, 2), "realized_pnl_usd": _r(e.realized, 2),
+        "interest_usd": _r(e.interest, 2), "unrealized_pnl_usd": _r(e.unrealized, 2),
+        "value_usd": _r(e.value, 2), "open_positions": e.open_positions,
+        "open_unmarked": e.open_unmarked,
+    }) for e in report.history])  # fmt: skip
+
+
+def report_tables(report: PortfolioReport) -> list[Table]:
+    """What reporters publish: the three tables, plus `equity` when the report has it."""
+    equity = equity_table(report)
+    return [*tables(report), *([equity] if equity is not None else [])]
 
 
 _HELD_FIELDS = (

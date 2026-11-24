@@ -434,6 +434,42 @@ export interface PnlCurve extends CurveKey {
 
 export type CurvesResult = { ok: true; curves: PnlCurve[] } | { ok: false; errors: DataError[] };
 
+/**
+ * Contract 1.1 `equity.csv`: the portfolio's value at one point in time (hourly from its
+ * first activity, plus the report's as_of). Engine values; excluded trades left out.
+ */
+export interface EquityRow {
+  schema_version: string;
+  portfolio: string;
+  ts: string;
+  /** Starting balance + realized P&L + interest: open positions at cost. */
+  book_value_usd: number;
+  realized_pnl_usd: number;
+  interest_usd: number;
+  /** Marked open trades at liquidation value minus cost; unmarked ones count 0 (at cost). */
+  unrealized_pnl_usd: number;
+  /** book_value_usd + unrealized_pnl_usd. */
+  value_usd: number;
+  open_positions: number;
+  open_unmarked: number;
+}
+
+/** A portfolio's value over time, from its equity.csv (a chart helper; nothing derived). */
+export interface EquityCurve {
+  portfolio: string;
+  /** Unix seconds of each point. */
+  t: number[];
+  /** value_usd: open positions marked. */
+  value: number[];
+  /** book_value_usd: open positions at cost (realized only). */
+  book: number[];
+  /** open_unmarked at the last point. */
+  lastUnmarked: number;
+}
+
+/** `curve` null: the source has no equity.csv for the portfolio (older engine, `nem summary`). */
+export type EquityResult = { ok: true; curve: EquityCurve | null } | { ok: false; errors: DataError[] };
+
 export function curveId(k: CurveKey): string {
   return `${k.portfolio}/${k.strategy}`;
 }

@@ -1,5 +1,6 @@
 import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
 import backtestRun from "../../../../../contract/schema/backtest_run.schema.json";
+import equityRow from "../../../../../contract/schema/equity_row.schema.json";
 import status from "../../../../../contract/schema/status.schema.json";
 import strategyRow from "../../../../../contract/schema/strategy_row.schema.json";
 import summaryReport from "../../../../../contract/schema/summary_report.schema.json";
@@ -16,6 +17,7 @@ export type SchemaName =
   | "summary_row.schema.json"
   | "strategy_row.schema.json"
   | "trade_row.schema.json"
+  | "equity_row.schema.json"
   | "summary_report.schema.json"
   | "status.schema.json"
   | "backtest_run.schema.json";
@@ -31,7 +33,7 @@ export interface TableSchema {
   properties: Record<string, PropertySchema>;
 }
 
-const all = [summaryRow, strategyRow, tradeRow, summaryReport, status, backtestRun, variantMetrics];
+const all = [summaryRow, strategyRow, tradeRow, equityRow, summaryReport, status, backtestRun, variantMetrics];
 
 // strict: false because the contract uses union types with `pattern` (valid 2020-12, but
 // Ajv's strict mode would log about it) and we must never reject a valid contract file.
@@ -54,6 +56,7 @@ const tables: Partial<Record<SchemaName, unknown>> = {
   "summary_row.schema.json": summaryRow,
   "strategy_row.schema.json": strategyRow,
   "trade_row.schema.json": tradeRow,
+  "equity_row.schema.json": equityRow,
 };
 
 export function tableSchema(name: SchemaName): TableSchema {

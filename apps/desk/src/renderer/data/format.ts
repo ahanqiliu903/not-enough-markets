@@ -58,6 +58,10 @@ export function signClass(v: number | null | undefined): string {
 /** Label for the engine's mark-to-market values (contract 1.1), shown wherever they are. */
 export const MARK_LABEL = "liquidation value at best bids, after exit fee";
 
+/** What the Portfolios value chart shows (engine equity.csv, contract 1.1). */
+export const EQUITY_LABEL =
+  "Portfolio value: open positions at liquidation value (best bids after exit fee); unmarked at cost; excluded trades left out";
+
 /** "+$1.20", "+$1.20 (2 unmarked)", "-$4.50 (5 no bids at $0)"; NA when the engine gave no value. */
 export function unrealized(
   pnl: number | null | undefined,

@@ -1,5 +1,6 @@
 import type {
   DataError,
+  EquityResult,
   Snapshot,
   SnapshotResult,
   SourcesState,
@@ -162,6 +163,8 @@ export interface FakeOptions {
   tradesError?: DataError[];
   /** Row generator for the trades pages (default `trade`). */
   tradeRow?: (i: number) => TradeRow;
+  /** `data:equity` answer (default: no equity.csv, `curve` null). */
+  equity?: EquityResult;
 }
 
 export interface Fake {
@@ -194,6 +197,7 @@ export function fakeApi(o: FakeOptions = {}): Fake {
           ok: true,
           curves: keys.map((k) => ({ ...k, t: [1759277703, 1759278603], pnl: [0.51, 1.07] })),
         }),
+      equity: () => Promise.resolve(o.equity ?? { ok: true, curve: null }),
       onChanged: () => () => undefined,
       db: undefined as unknown as NemApi["data"]["db"],
       updates: undefined as unknown as NemApi["data"]["updates"],

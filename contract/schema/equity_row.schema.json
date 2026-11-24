@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "equity_row.schema.json",
+  "title": "Portfolio value over time row",
+  "description": "One row of out/<portfolio>/equity.csv and the <portfolio> equity Sheets tab: the portfolio's value at one point in time (every hour on the hour from the hour of its first activity, plus a last row at the report's as_of). Reporting only. Written by `nem report`; a reader must accept a source without this file (older 1.x engine) and hide what it would show.",
+  "x-since": "1.1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "portfolio",
+    "ts",
+    "book_value_usd",
+    "realized_pnl_usd",
+    "interest_usd",
+    "unrealized_pnl_usd",
+    "value_usd",
+    "open_positions",
+    "open_unmarked"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "report layout version; the app accepts major 1"
+    },
+    "portfolio": {
+      "type": "string",
+      "description": "portfolio name"
+    },
+    "ts": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "the point in time valued (UTC); rows are in time order, the last one is the report's as_of"
+    },
+    "book_value_usd": {
+      "type": "number",
+      "description": "starting balance + realized_pnl_usd + interest_usd: open positions at cost"
+    },
+    "realized_pnl_usd": {
+      "type": "number",
+      "description": "realized P&L of trades settled (or exited) at or before ts; excluded trades left out"
+    },
+    "interest_usd": {
+      "type": "number",
+      "description": "interest credited before ts"
+    },
+    "unrealized_pnl_usd": {
+      "type": "number",
+      "description": "over trades open at ts (excluded left out): liquidation value at ts (recorded bids of the latest snapshot at or before ts, after the exit fee; uncovered contracts at $0) minus entry cost, for the marked ones; unmarked ones (stale book, closed market) count 0, i.e. at cost"
+    },
+    "value_usd": {
+      "type": "number",
+      "description": "book_value_usd + unrealized_pnl_usd: the portfolio marked to market"
+    },
+    "open_positions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "counted (not excluded) trades open at ts"
+    },
+    "open_unmarked": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "of open_positions, those with no fresh book at ts, counted at cost"
+    }
+  },
+  "additionalProperties": true
+}

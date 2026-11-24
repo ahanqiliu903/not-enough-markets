@@ -846,14 +846,19 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 
 def _reports(
-    store: "Store", portfolios: "list[PortfolioConfig]", now: datetime, args: argparse.Namespace
+    store: "Store",
+    portfolios: "list[PortfolioConfig]",
+    now: datetime,
+    args: argparse.Namespace,
+    history: bool = False,
 ) -> "list[PortfolioReport]":
-    """Every portfolio file's report, then imported manual portfolios (read-only)."""
+    """Every portfolio file's report, then imported manual portfolios (read-only).
+    `history`: with the value-over-time (`equity`) table, for the reporters."""
     from nem.stats.report import build_report, manual_reports
 
     pending = {} if args.no_provisional else _provisional(store, portfolios, now)
     reports = [
-        build_report(store, p, now, args.edge, args.alpha, args.power, pending.get(p.name))
+        build_report(store, p, now, args.edge, args.alpha, args.power, pending.get(p.name), history)
         for p in portfolios
     ]
     names = [p.name for p in portfolios]
@@ -936,7 +941,7 @@ def cmd_report(args: argparse.Namespace) -> int:
                 except (ConfigError, PluginError) as e:
                     log.error("portfolio edit rejected, still reporting the old config: %s", e)
             now = datetime.now(UTC)
-            reports = _reports(store, portfolios, now, args)
+            reports = _reports(store, portfolios, now, args, history=not args.no_publish)
             print(render_all(reports))
             if not args.no_publish:
                 for report in reports:

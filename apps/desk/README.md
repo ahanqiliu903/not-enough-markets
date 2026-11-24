@@ -13,7 +13,7 @@ bundled sample data and recorded Kalshi responses) are in [docs/screenshots/](do
 
 | Key | Screen | What it shows |
 |---|---|---|
-| Cmd/Ctrl+1 | Portfolios | A card per portfolio (equity, P&L vs holding cash, open positions, open value and unrealized P&L, pending locked / likely P&L "not counted"), strategy rows with verdict badges; hover a badge for its lore card |
+| Cmd/Ctrl+1 | Portfolios | A card per portfolio (equity, P&L vs holding cash, open positions, open value and unrealized P&L, pending locked / likely P&L "not counted", a chart of portfolio value over time), strategy rows with verdict badges; hover a badge for its lore card |
 | Cmd/Ctrl+2 | Strategy | Tier badge, win-rate and edge intervals vs break-even, SPRT progress, P&L curve and drawdown, calibration, signal reasons |
 | Cmd/Ctrl+3 | Compare | 2 to 4 strategies (retired included): P&L curves from a common start, stats, verdicts |
 | Cmd/Ctrl+4 | Trades | Virtualized blotter: sort, filter, CSV export (100k rows smooth); each open trade's mark (unrealized P&L, mark value, bid, mid; "no bids" flag when contracts are valued at $0); trades excluded from statistics muted with their reason, "Hide excluded" toggle; "Pending" column for open trades (e.g. "locked win (obs 56°F)", "likely loss (price)") |
@@ -336,6 +336,16 @@ folder (`sources.json`); source folders are only read.
   and Strategy show `pending_locked_pnl_usd` / `pending_likely_pnl_usd` with their counts
   and `pending_conflict`, labelled "not counted: Kalshi settles". Engine values only;
   `-` when the engine didn't compute them (`--no-provisional`, older file).
+- **Value over time** (contract 1.1, `out/<portfolio>/equity.csv`, written by `nem report`):
+  the Portfolios card charts `value_usd` ("Value (marked)") and `book_value_usd` ("At cost
+  (realized only)") per hour, with a dashed line at the starting balance, labelled
+  "Portfolio value: open positions at liquidation value (best bids after exit fee); unmarked
+  at cost; excluded trades left out". `data:equity` returns the file's points as-is (sorted
+  by `ts`); the desk derives nothing. The file is optional: absent (older engine, or only
+  `nem summary` ran) the chart is hidden with a note, and a broken file shows its schema
+  error in the chart's place without blocking the other tables. The Google Sheets source
+  syncs the `<portfolio> equity` tab too; a missing tab (older engine) hides the chart
+  without an error.
 - **Trades** stay in main: `data:trades` filters, sorts and pages them (the sorted index is
   cached, so scrolling is a slice); `data:tradesCsv` returns the matching rows with the
   engine's own cell text for export; `data:curves` gives cumulative P&L for charts.
@@ -415,8 +425,8 @@ over SSH" under the halts list:
 Settings → "Google Sheet": paste the sheet's share link (or its ID) and the portfolio names
 (tab prefixes). No Google account, API key or service account: in Sheets choose Share,
 General access "Anyone with the link", role Viewer (anyone holding the link can then read
-it). Main fetches each tab `<portfolio> summary|strategies|trades` (the `sheets` reporter's
-names) as CSV from `https://docs.google.com/spreadsheets/d/<id>/gviz/tq?tqx=out:csv&sheet=<tab>`:
+it). Main fetches each tab `<portfolio> summary|strategies|trades|equity` (the `sheets`
+reporter's names; `equity` is optional) as CSV from `https://docs.google.com/spreadsheets/d/<id>/gviz/tq?tqx=out:csv&sheet=<tab>`:
 GET only, that host and path only, no cookies or auth headers, redirects never followed (a
 redirect to `accounts.google.com` means the sheet is private). At most 1 request/s, retries
 on 429 / 5xx / network errors (2 s, 4 s), auto refresh every 5 min by default (1 min
@@ -429,7 +439,8 @@ minimum, or off), doubling up to 1 h after quota or server errors.
 - **Missing tabs.** gviz answers an unknown tab name with the *first* tab, so each tab must
   have its own required columns and only rows of the requested portfolio; otherwise it is
   `missing_tab` and its cached copy is removed (the data layer then reports the file
-  missing). A tab with no rows can't be told apart from another portfolio's empty tab.
+  missing). An optional tab (`equity`, older engines) that's missing is skipped without an
+  error, and its stale cached copy removed. A tab with no rows can't be told apart from another portfolio's empty tab.
 - **Errors are values** (`not_shared`, `not_found`, `missing_tab`, `schema`, `offline`,
   `rate_limited`, `upstream`, `blocked`, ...), shown per tab under "Last sync". Offline or
   private keeps the last good cache.

@@ -289,9 +289,17 @@ file in `portfolios/` (next to `starting_balance`, not inside `strategies:`):
 
 ```yaml
 reporting:
-  - {type: csv, path: out}                       # out/<portfolio>/{summary,strategies,trades}.csv
-  - {type: sheets, sheet_id_env: SHEET_ID}       # tabs "<portfolio> summary|strategies|trades"
+  - {type: csv, path: out}                       # out/<portfolio>/{summary,strategies,trades,equity}.csv
+  - {type: sheets, sheet_id_env: SHEET_ID}       # tabs "<portfolio> summary|strategies|trades|equity"
 ```
+
+`equity` is the portfolio's value over time (every hour from its first trade, plus the
+report time), which NEM Desk charts on the Portfolios screen: `book_value_usd` (starting
+balance + realized P&L + interest, open positions at cost) and `value_usd` (plus open
+positions at liquidation value, the same marks as the summary's unrealized P&L, from the
+snapshot recorded at that hour; positions without a fresh book count at cost and are
+counted in `open_unmarked`). Excluded trades are left out. Reporting only; `nem summary`
+doesn't compute it.
 
 Google Sheets setup: `uv sync --extra sheets`, create a Google Cloud service account with a JSON key, share the spreadsheet with the service account's email, then set `SHEETS_CREDENTIALS=/path/to/key.json` and `SHEET_ID=<spreadsheet id>` in the environment (never in the YAML). Several portfolios can share one spreadsheet; each writes only its own tabs.
 

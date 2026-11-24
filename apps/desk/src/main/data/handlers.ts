@@ -107,6 +107,7 @@ export const dataHandlers: DataHandlers = {
   "data:trades": (req) => sources().trades(parseQuery(req)),
   "data:tradesCsv": (req) => sources().tradesCsv(parseQuery(req)),
   "data:curves": (req) => sources().curves(parseKeys(req)),
+  "data:equity": (req) => sources().equity(str((req as { portfolio?: unknown } | null)?.portfolio)),
   "sources:list": () => sources().state(),
   "sources:addFolder": async (req): Promise<SourceResult> => {
     const given = (req as { path?: unknown } | null)?.path;

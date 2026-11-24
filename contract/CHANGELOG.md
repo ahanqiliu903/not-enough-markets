@@ -94,6 +94,20 @@
     Kalshi settles").
   - Fixtures regenerated (no open trades in them: the pending totals are 0 and the trade
     columns empty).
+- New table `equity` (portfolio value over time, `nem.stats.equity`):
+  `out/<portfolio>/equity.csv` and the Sheets tab `<portfolio> equity`, written by
+  `nem report` only (`build_report(..., history=True)`; `nem summary` and
+  `nem report --no-publish` skip it; not in `nem summary --json`). Schema
+  `equity_row.schema.json`, `"x-since": "1.1"` at the top level: the whole table is new,
+  so a reader treats a missing file as "not available", never an error. Columns:
+  `schema_version`, `portfolio`, `ts` (UTC Z), `book_value_usd`, `realized_pnl_usd`,
+  `interest_usd`, `unrealized_pnl_usd`, `value_usd`, `open_positions`, `open_unmarked`
+  (integers). One row per hour on the hour from the hour of the portfolio's first activity,
+  plus a last row at the report's `as_of`; none before any activity. Excluded trades left
+  out; marks as the trade mark columns, at each `ts`; unmarked open trades at cost.
+  Reporting only. Fixtures regenerated (`basic`: 44 rows; every hourly point falls on a
+  15-minute close, so its open trades are unmarked and value equals book value; `empty`:
+  header only).
 - Emitted `schema_version` is still `1.0`; bumping it also means regenerating
   `contract/fixtures/`.
 

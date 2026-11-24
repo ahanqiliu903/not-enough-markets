@@ -1,4 +1,5 @@
-"""Writes `<path>/<portfolio>/{summary,strategies,trades}.csv`, replacing old files."""
+"""Writes `<path>/<portfolio>/{summary,strategies,trades}.csv`, plus `equity.csv` (value over
+time) when the report has it (`nem report`), replacing old files."""
 
 import csv
 import os
@@ -6,7 +7,7 @@ from pathlib import Path
 
 from nem.core.registry import PluginParams, register
 from nem.reporting.base import Reporter
-from nem.stats.report import PortfolioReport, tables
+from nem.stats.report import PortfolioReport, report_tables
 
 
 @register("reporter", "csv")
@@ -20,7 +21,7 @@ class CsvReporter(Reporter):
     def publish(self, report: PortfolioReport) -> str:
         directory = self.root / report.portfolio.name
         directory.mkdir(parents=True, exist_ok=True)
-        for table in tables(report):
+        for table in report_tables(report):
             target = directory / f"{table.name}.csv"
             tmp = target.with_suffix(".csv.tmp")
             with tmp.open("w", newline="") as f:
