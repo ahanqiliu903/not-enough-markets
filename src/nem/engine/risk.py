@@ -1,6 +1,10 @@
 """Risk limits, checked for the strategy and then its portfolio before every order.
 
 These fail closed: if a check can't be evaluated, the trade is blocked.
+
+`new_cost` is the proposed order's full cost: contracts at their fill prices plus the
+entry fee (the engine passes the broker's quote). Money limits are inclusive: a cost that
+lands exactly on a limit passes; anything beyond it, after float noise, is blocked.
 """
 
 from collections.abc import Sequence
@@ -12,6 +16,8 @@ from nem.core.context import Context
 from nem.core.types import Decision, Trade
 from nem.settle.stations import lookup
 from nem.stats.metrics import max_drawdown as _max_drawdown
+
+EPS = 1e-9  # float noise, in dollars; far below a cent
 
 
 def max_drawdown(trades: Sequence[Trade]) -> float:
@@ -37,7 +43,7 @@ def check_limits(
     if risk.max_open_positions is not None and len(open_trades) >= risk.max_open_positions:
         return block("max_open_positions")
     allocated = sum(t.cost for t in open_trades)
-    if risk.max_allocation is not None and allocated + new_cost > risk.max_allocation:
+    if risk.max_allocation is not None and allocated + new_cost > risk.max_allocation + EPS:
         return block("max_allocation")
     if risk.daily_loss_cap is not None:
         today = sum(
@@ -78,7 +84,7 @@ def check_city_limit(
     if city is None:
         return Decision.skip(f"risk:{scope}:max_city_allocation:unknown_city")
     held = sum(t.cost for t in open_trades if _city(t.ticker) == city)
-    if held + new_cost > cap:
+    if held + new_cost > cap + EPS:
         return Decision.skip(f"risk:{scope}:max_city_allocation:{city}")
     return Decision.ok()
 
@@ -86,7 +92,7 @@ def check_city_limit(
 def check_risk(ctx: Context, new_cost: float, ticker: str | None = None) -> Decision:
     try:
         now = ctx.now()
-        if new_cost > ctx.cash():
+        if new_cost > ctx.cash() + EPS:
             return Decision.skip("risk:portfolio:insufficient_cash")
         mine = ctx.open_trades()
         settled = ctx.settled_positions()  # excluded trades are left out

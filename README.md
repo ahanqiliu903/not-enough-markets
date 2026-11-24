@@ -143,7 +143,7 @@ portfolios/
 | **signal** | When to enter, which side, at what price. Can read feeds. | `extreme_favorite` (buy the favorite at 90c+) |
 | **gates** | Whether to veto a trade the signal wants. Can read feeds. | `max_entry_price`, `time_in_window` (only the last N minutes), `city_filter` (allow/exclude weather cities by station), `strike_filter` (only some strike types, e.g. `between` = the inner brackets), `market_day_window` (enter only between local times anchored on the market date, e.g. 06:00 to noon on the day), "skip if forecast precipitation > 60%", forecast gates for temperature markets: `source_agreement` (>= N forecast sources on our side of the strike), `bracket_distance` (forecast >= D degrees from where our side loses), `sky_conditions` (veto on rain chance / cloud cover); see [examples/weather/](examples/weather/forecast_gates.yaml) |
 | **sizing** | How many contracts. | `fixed` (N contracts), `percent` (N% of the portfolio), `kelly` (fractional, always with a contract cap) |
-| **risk** | Hard limits. Always fail closed. | `max_allocation`, `max_city_allocation` (open cost per weather station, see [examples/risk/](examples/risk/city_caps.yaml)), `daily_loss_cap`, `max_drawdown`, `max_open_positions`, kill rule ("pause if win rate < break-even after N trades") |
+| **risk** | Hard limits, checked against the order's full cost including the entry fee. Always fail closed. | `max_allocation`, `max_city_allocation` (open cost per weather station, see [examples/risk/](examples/risk/city_caps.yaml)), `daily_loss_cap`, `max_drawdown`, `max_open_positions`, kill rule ("pause if win rate < break-even after N trades") |
 
 Strategies can be `active`, `paused` or `retired`. Retired ones keep their history so you can compare old ideas against new ones.
 
@@ -161,6 +161,7 @@ mode: paper
 starting_balance: 1000
 interest_apy: 0.0325             # Kalshi's current rate; it changes, so check it. null = off
 check_every: 5s                  # default for every strategy below
+max_snapshot_age: 2m             # never enter on a market snapshot older than this (default 2m)
 risk: {daily_loss_cap: null, max_open_positions: 3}   # null = disabled
 
 feeds:
@@ -358,7 +359,7 @@ A desktop app (macOS, Windows) for looking at what the engine exports. It's read
 - **Every signal is logged with a reason**, including the ones that were skipped, so you can measure what each gate actually did.
 - **Kalshi's fees and interest are part of every number.** Paper fills charge Kalshi's taker fee (rounded up to the cent, per order) and walk the real orderbook, so entry prices include slippage. Edge and break-even win rate are computed after fees. Paper portfolios can accrue Kalshi's interest (APY on cash and open positions, accrued daily), so a strategy has to beat simply holding cash to look good.
 - **Idempotent orders.** Order IDs are deterministic, so a retry can never double-fill.
-- **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed. Risk limits use `null` for "disabled", never `0`.
+- **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed when its data is missing or stale; a gate that crashes (a bug) always blocks the trade. Risk limits use `null` for "disabled", never `0`.
 - **Secrets only from environment variables.** Nothing secret is ever in a config file or a commit; [gitleaks](https://github.com/gitleaks/gitleaks) runs on every commit and in CI.
 
 ## Roadmap

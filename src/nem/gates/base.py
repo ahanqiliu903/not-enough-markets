@@ -7,8 +7,9 @@ from nem.core.types import Decision, MarketSnapshot, Signal
 
 
 class GateParams(PluginParams):
-    # What happens if this gate's own data is unavailable (it raises DataUnavailable or
-    # errors): fail open = let the trade through, fail closed = block it. Both are logged.
+    # What happens if this gate's own data is missing or stale (it raises DataUnavailable):
+    # fail open = let the trade through, fail closed = block it. Both are logged. Any other
+    # exception is a bug and always blocks the trade, whatever this says.
     fail_open: bool = False
 
 
