@@ -19,6 +19,7 @@ from datetime import datetime
 
 from nem.core.types import Fill, MarketSnapshot, Order, Trade
 from nem.engine.runtime import StrategyRuntime
+from nem.execution.book import BookTaken
 from nem.execution.exits import EXIT_STATUS, ExitFill, TradedVolume, decide_exit, exit_order_id
 from nem.store import Store
 
@@ -61,9 +62,12 @@ def run_exits(
     now: datetime,
     store: Store,
     traded: TradedVolume | None = None,
+    book: BookTaken | None = None,
 ) -> list[Trade]:
     """Check this strategy's open positions against this tick's books. Returns the trades
-    closed by an exit. `traded` (trade prints) is needed by the trade_through model only."""
+    closed by an exit. `traded` (trade prints) is needed by the trade_through model only.
+    With `book`, exits see only depth not yet taken this tick, and take what they sell into
+    (bids at or above the exit's price, best first)."""
     cfg = rt.config.exit
     if cfg is None or cfg.holds:
         return []
@@ -79,10 +83,14 @@ def run_exits(
         snap = books.get(trade.ticker)
         if snap is None or snap.window_id != trade.window_id:
             continue
+        if book is not None:
+            snap = book.view(snap)
         missing = rt.portfolio.fills.missing_depth
         fill = decide_exit(trade, cfg, snap, rt.config.taker_rate, traded, missing)
         if fill is None:
             continue
         assert fill.qty == trade.qty, "exits are all-or-nothing"
+        if book is not None:
+            book.take(snap, trade.side, fill.qty, at_or_above=fill.limit_price)
         closed.append(_record(trade, fill, store))
     return closed

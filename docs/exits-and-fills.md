@@ -31,7 +31,8 @@ and "ask" is 1 minus the best YES bid.
 
 ## Fill assumptions (entries and exits)
 
-Code: `src/nem/execution/paper_broker.py` (entries), `src/nem/execution/exits.py` (exits).
+Code: `src/nem/execution/paper_broker.py` (entries), `src/nem/execution/exits.py` (exits),
+`src/nem/execution/book.py` (sharing a book).
 
 - **Only recorded depth is liquidity.** An entry buying YES at limit L lifts recorded NO
   bids (asks at 1 - bid) best first up to L, immediate-or-cancel: a partial fill is
@@ -60,9 +61,24 @@ Code: `src/nem/execution/paper_broker.py` (entries), `src/nem/execution/exits.py
   portfolio it replays (the archive has no depth, docs/data-provenance.md).
 - **Why no fill.** An entry that doesn't fill is logged (`nem summary` reasons, the
   `signals` table) as `no_depth_recorded` (side not recorded, default mode), `book_empty`
-  (recorded empty), `no_liquidity_at_limit` (depth, but none at or under the limit) or
-  `no_quote` (quote mode, and no ask either).
-- Quote fills have no recorded size, so nothing bounds them but the order itself.
+  (recorded empty, or already taken by an earlier strategy this tick, below),
+  `no_liquidity_at_limit` (depth, but none at or under the limit) or `no_quote` (quote
+  mode, and no ask either).
+- **Strategies of one portfolio share a book within a tick.** The runner shows every
+  strategy of a portfolio the same recorded book. Each fill takes the levels it walked
+  (an entry buying YES takes NO bids, an exit selling YES takes YES bids), and later
+  strategies in the same tick see only what is left. Order is fixed: exits first, then
+  entries, each in strategy order as in the portfolio file. Two strategies wanting 5
+  each from a 5-contract book get 5 and 0, not 10.
+- **Depth replenishes between ticks.** The next poll's book is recorded afresh and our
+  paper orders are never in it, so nothing taken carries over: the second strategy above
+  can fill at the next poll if the book still shows the size. That is an assumption (the
+  size we took may not have come back); a snapshot is not a continuous liquidity
+  guarantee.
+- **Scopes don't share.** Different portfolios, and the variants of a sweep (`nem
+  suggest`, `nem history suggest`: each variant is its own portfolio), each see the whole
+  recorded book, as each would if run alone. Quote fills have no recorded size to take,
+  so they are not limited across strategies either.
 - Mark-to-market follows the same states: no recorded depth leaves a trade unmarked,
   recorded empty bids value it at $0 (below). It never uses `fills.missing_depth`.
 
@@ -74,9 +90,10 @@ Code: `src/nem/execution/paper_broker.py` (entries), `src/nem/execution/exits.py
 - Only while the market is open; after close, settlement decides.
 - All-or-nothing: the whole position leaves in one fill, or nothing fills this poll and
   the exit tries again next poll. Partial exits are not modelled.
-- Only recorded bids count (Fill assumptions above). A bid side that wasn't recorded
-  fills only under `fills.missing_depth: quote`, where the top-of-book bid is assumed to
-  cover the whole position. Record with depth.
+- Only recorded bids count, shared with the portfolio's other strategies this tick (Fill
+  assumptions above). A bid side that wasn't recorded fills only under
+  `fills.missing_depth: quote`, where the top-of-book bid is assumed to cover the whole
+  position. Record with depth.
 
 ## Take-profit fill models
 

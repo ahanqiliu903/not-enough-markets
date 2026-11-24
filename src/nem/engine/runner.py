@@ -2,7 +2,8 @@
 
 Each tick (one market poll, live or replayed): settle resolved trades, accrue interest,
 fetch due feeds (live only), then let every active strategy whose `check_every` has
-elapsed evaluate the open markets of its series.
+elapsed evaluate the open markets of its series. Strategies of one portfolio share each
+tick's recorded books: a fill takes the depth it used (nem.execution.book).
 
 Live and replay differ only in the source, the clock, and whether feeds are fetched (in
 replay they were recorded, so they're read from the data store).
@@ -29,6 +30,7 @@ from nem.engine.runtime import (
 )
 from nem.engine.settlement import accrue_interest, settle_due
 from nem.engine.step import evaluate
+from nem.execution.book import BookTaken
 from nem.execution.exits import TradedVolume
 from nem.market.kalshi import KalshiError
 from nem.market.source import MarketSource, PrintSource, Tick
@@ -112,10 +114,14 @@ class Runner:
         settle_due(self.store, self.source, now, self._on_settle)
         accrue_interest(self.store, self.portfolios, now, self._equity_at)
         self._fetch_feeds(now)
+        # Strategies of one portfolio share its books this tick: each fill takes the depth
+        # it used, exits first, then entries, in strategy order (nem.execution.book).
+        books: dict[str, BookTaken] = {}
         # Exits close positions, so they run for paused and halted strategies too (a halt
         # stops new entries). No-op for strategies that hold to settlement.
         for rt in self.strategies:
-            run_exits(rt, tick.snapshots, now, self.store, self._traded)
+            book = books.setdefault(rt.portfolio.name, BookTaken())
+            run_exits(rt, tick.snapshots, now, self.store, self._traded, book)
         trades: list[Trade] = []
         for rt in self.strategies:
             if rt.config.status != "active":
@@ -134,9 +140,13 @@ class Runner:
                 continue
             rt.last_check = now
             ctx = self.context(rt)
+            book = books.setdefault(rt.portfolio.name, BookTaken())
             for snap in snaps:
-                trade = evaluate(rt, snap, ctx, self.store)
+                view = book.view(snap)
+                trade = evaluate(rt, view, ctx, self.store)
                 if trade is not None:
+                    # buying YES lifts NO bids (and vice versa), cheapest ask first
+                    book.take(view, "no" if trade.side == "yes" else "yes", trade.qty)
                     trades.append(trade)
         self.store.heartbeat(now, PROCESS, "ok")
         return trades
