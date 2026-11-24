@@ -23,6 +23,7 @@ import type {
 import type {
   CurveKey,
   CurvesResult,
+  EquityResult,
   DataSource,
   SnapshotResult,
   SourceResult,
@@ -66,6 +67,7 @@ export interface IpcChannels {
   "data:trades": { request: TradesQuery; response: TradesPage };
   "data:tradesCsv": { request: TradesFilter; response: TradesCsv };
   "data:curves": { request: { keys: CurveKey[] }; response: CurvesResult };
+  "data:equity": { request: { portfolio: string }; response: EquityResult };
   "sources:list": { request: void; response: SourcesState };
   "sources:addFolder": { request: { path?: string }; response: SourceResult };
   "sources:addSample": { request: void; response: SourceResult };
@@ -123,6 +125,7 @@ export const IPC_CHANNELS = [
   "data:trades",
   "data:tradesCsv",
   "data:curves",
+  "data:equity",
   "sources:list",
   "sources:addFolder",
   "sources:addSample",
@@ -193,6 +196,8 @@ export interface DataApi {
   trades: (query: TradesQuery) => Promise<TradesPage>;
   tradesCsv: (filter: TradesFilter) => Promise<TradesCsv>;
   curves: (keys: CurveKey[]) => Promise<CurvesResult>;
+  /** Contract 1.1: a portfolio's value over time from its equity.csv. */
+  equity: (portfolio: string) => Promise<EquityResult>;
   /** Calls back with the new revision; returns an unsubscribe function. */
   onChanged: (callback: (revision: number) => void) => () => void;
   /** DESK-010: read-only queries on the active source's snapshot database. */

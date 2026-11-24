@@ -5,6 +5,7 @@ import {
   PORTFOLIO_NAME_RE,
   SHEETS_DEFAULT_INTERVAL,
   SHEETS_INTERVALS,
+  OPTIONAL_SHEETS_TABS,
   SHEETS_TABS,
   type SheetsError,
   type SheetsSaveResult,
@@ -20,6 +21,7 @@ import { parseSheetRef, type SheetsClient } from "./client";
 
 /**
  * Google Sheets source (DESK-012). Each sync fetches `<portfolio> summary|strategies|trades`
+ * (and `equity` when the engine wrote it: contract 1.1, optional)
  * as CSV, checks Google really returned that tab, and writes it to
  * `<cacheDir>/out/<portfolio>/<tab>.csv`. The cache is then an ordinary folder source, so the
  * data layer applies exactly the same coercion and schema validation as to the engine's own
@@ -31,6 +33,7 @@ const SCHEMA: Record<SheetsTab, SchemaName> = {
   summary: "summary_row.schema.json",
   strategies: "strategy_row.schema.json",
   trades: "trade_row.schema.json",
+  equity: "equity_row.schema.json",
 };
 
 export const MAX_PORTFOLIOS = 20;
@@ -307,6 +310,7 @@ export class SheetsManager {
           // The tab is gone: drop the stale copy so the data layer reports it missing.
           rmSync(file, { force: true });
           wrote = true;
+          if (OPTIONAL_SHEETS_TABS.includes(tab)) continue; // older engine: no chart, no error
           tabs.push({ portfolio, tab, ok: false, error: wrong });
           continue;
         }

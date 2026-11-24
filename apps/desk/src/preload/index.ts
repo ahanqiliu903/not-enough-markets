@@ -17,6 +17,7 @@ const api: NemApi = {
     trades: (query) => invoke("data:trades", query),
     tradesCsv: (filter) => invoke("data:tradesCsv", filter),
     curves: (keys) => invoke("data:curves", { keys }),
+    equity: (portfolio) => invoke("data:equity", { portfolio }),
     onChanged: (callback) => {
       const listener = (_e: unknown, payload: { revision?: unknown }) => {
         if (typeof payload.revision === "number") callback(payload.revision);

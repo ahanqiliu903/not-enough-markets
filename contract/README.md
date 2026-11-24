@@ -13,7 +13,8 @@ additions are unreleased and already written (see [CHANGELOG.md](CHANGELOG.md)).
 | `out/<portfolio>/summary.csv` | `nem report` (`csv` reporter) | one row: the portfolio | `schema/summary_row.schema.json` |
 | `out/<portfolio>/strategies.csv` | `nem report` | one row per strategy, including paused and retired | `schema/strategy_row.schema.json` |
 | `out/<portfolio>/trades.csv` | `nem report` | every trade, settled and open | `schema/trade_row.schema.json` |
-| Google Sheets tabs `<portfolio> summary/strategies/trades` | `nem report` (`sheets` reporter) | same rows as the CSVs | same |
+| `out/<portfolio>/equity.csv` (1.1) | `nem report` | portfolio value over time: one row per hour from the first activity, plus the report time | `schema/equity_row.schema.json` |
+| Google Sheets tabs `<portfolio> summary/strategies/trades/equity` | `nem report` (`sheets` reporter) | same rows as the CSVs (`equity` from 1.1) | same |
 | `nem summary --json` | CLI | summary + strategies, plus per-strategy `signal_reasons` and `calibration` | `schema/summary_report.schema.json` |
 | `nem status --json` | CLI (exit code 2 if unhealthy) | process heartbeats, halts, per-strategy activity | `schema/status.schema.json` |
 | `out/backtests/<run_id>.json` | `nem suggest` (`--save`) | one parameter sweep: grid, windows, every variant's train metrics, the chosen variant's test metrics | `schema/backtest_run.schema.json` |
@@ -59,6 +60,9 @@ that need care:
 | `excluded`, `exclude_reason` (1.1, trades) | excluded by `nem trade exclude` (treated as never taken) (CSV text `true`/`false`; Sheets may show `TRUE`/`FALSE`) and why. Read absent (older file) as `false` |
 | `excluded_trades` (1.1, summary and strategies) | excluded trades, settled and open, treated as never taken. A strategy row's statistics (`trades`, `wins`, win rate, edge, `verdict`, `trades_to_detect`, `brier`, `pnl_usd`, `pnl_per_trade_usd`, `roi`, `max_drawdown_usd`) and the money columns (`realized_pnl_usd`, `equity_usd`, `return_rate`, `open_positions`, `open_cost_usd`, open mark totals) all leave them out. `trades.csv` still lists them with their own `pnl_usd` and marks, so a P&L curve from it must skip `excluded` rows to match the summary |
 | `open_value_usd`, `unrealized_pnl_usd`, `open_unmarked`, `open_no_bid_contracts` (1.1, summary and strategies) | sums over marked open trades (uncovered contracts at $0); `open_unmarked` counts open trades with no fresh book (left out); `open_no_bid_contracts` sums `contracts` - `mark_contracts` over the marked ones (a pending loss). 0 with no open trades, empty when open trades exist but none is marked |
+| `provisional_result`, `provisional_basis`, `provisional_pnl_usd`, `observed_extreme_f` (1.1, trades) | an open trade's provisional result (`nem.settle.provisional`; empty when settled or not computed, e.g. `--no-provisional`): `locked_win` / `locked_loss` (the climate day's running high/low already decides the market, even 1°F back toward the strike), `likely_win` / `likely_loss` (observed only at the exact extreme, or a side bid / closed market's last price at 98c+; price is never locked), `conflict` (observed and price disagree), `unknown`. Basis `observed` / `price` / `both`. `provisional_pnl_usd` is the P&L if it holds, as settlement would book it. **Reporting only**: never in any P&L, equity, statistic, risk limit or what signals see; Kalshi settles. Show an unrecognised value as text |
+| `pending_locked_pnl_usd`, `pending_likely_pnl_usd`, `pending_locked`, `pending_likely`, `pending_conflict` (1.1, summary and strategies) | sums / counts of the above over counted (not excluded) open trades; conflicts counted, not summed. 0 with no open trades, empty when open trades exist but nothing was computed |
+| `equity.csv` (1.1, whole table) | `ts`: every hour on the hour from the hour of the portfolio's first activity, then the report's `as_of` (the last row). `realized_pnl_usd`: trades settled at or before `ts`; `interest_usd`: ledger before `ts`; `book_value_usd` = start + both (open positions at cost; the last row equals the summary's `equity_usd`). `unrealized_pnl_usd`: trades open at `ts`, marked as the trade mark columns are but at `ts` (latest snapshot at or before `ts`, 15-minute staleness, closed market, uncovered contracts at $0); `open_unmarked` of `open_positions` have no fresh book and count at cost (0). `value_usd` = book + unrealized. Excluded trades are left out at every point. Written only by `nem report` (not `nem summary`); a reader must treat a missing file as "not available" (older 1.x engine), not an error. The schema carries `"x-since": "1.1"` at the top level |
 | backtest `variants[].test` | held-out metrics, present **only for the chosen variant**: showing every variant's test result would invite choosing on test data |
 | backtest `fill_estimate` | always `null` in 1.0: fills walk the recorded book, no range is modelled yet |
 
@@ -98,7 +102,7 @@ uv run python contract/generate_fixtures.py
   halted, `sol_undecided` undecided), about 400 trades, 42 hours of 1-minute snapshots on
   three series, a `btc_spot` feed, heartbeats, `summary.json`, `status.json`, and one
   `suggested` backtest run.
-- `empty/`: the same files with no strategies or trades.
+- `empty/`: the same files with no strategies or trades (`equity.csv` has a header only).
 - `broken/<case>/`: one failure each that readers must report, not crash on:
   `missing_column`, `wrong_major_version`, `bad_timestamp`, `duplicate_rows`.
 

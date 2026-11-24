@@ -6,6 +6,7 @@ process can read while the runner writes.
 
 import json
 import sqlite3
+from bisect import bisect_right
 from collections.abc import Iterator, Sequence
 from datetime import UTC, date, datetime, timedelta
 from importlib.resources import files
@@ -301,6 +302,31 @@ class Store:
             (ticker, _ts(at_or_before)),
         ).fetchone()
         return None if row is None else _snapshot(row)
+
+    def latest_snapshots(
+        self, ticker: str, times: Sequence[datetime]
+    ) -> list[MarketSnapshot | None]:
+        """`latest_snapshot(ticker, t)` for each `t` in `times`, in a few queries instead of
+        one per time (portfolio value over time marks every open trade at every hour)."""
+        if not times:
+            return []
+        keys = [_ts(t) for t in times]
+        rows = self._conn.execute(
+            "SELECT ts, id FROM snapshots WHERE ticker = ? AND ts <= ? ORDER BY ts, id",
+            (ticker, max(keys)),
+        ).fetchall()
+        stamps: list[str] = [r[0] for r in rows]
+        picked: list[int | None] = []
+        for k in keys:
+            i = bisect_right(stamps, k)  # the last row with ts <= k (highest id on a tie)
+            picked.append(rows[i - 1][1] if i else None)
+        ids = sorted({p for p in picked if p is not None})
+        found: dict[int, MarketSnapshot] = {}
+        for n in range(0, len(ids), 500):
+            chunk = ids[n : n + 500]
+            sql = f"SELECT * FROM snapshots WHERE id IN ({','.join('?' * len(chunk))})"
+            found.update((r["id"], _snapshot(r)) for r in self._conn.execute(sql, chunk))
+        return [None if p is None else found[p] for p in picked]
 
     # --- settlements --------------------------------------------------------
 
@@ -695,6 +721,13 @@ class Store:
             sql += " AND ts < ?"
             args.append(_ts(before))
         return float(self._conn.execute(sql, args).fetchone()[0])
+
+    def ledger_entries(self, portfolio: str) -> list[tuple[datetime, float]]:
+        """Every ledger entry of a portfolio as (ts, amount), oldest first."""
+        rows = self._conn.execute(
+            "SELECT ts, amount FROM ledger WHERE portfolio = ? ORDER BY ts, kind", (portfolio,)
+        )
+        return [(_dt(r[0]), float(r[1])) for r in rows]
 
     def last_ledger(self, portfolio: str, kind: str) -> datetime | None:
         row = self._conn.execute(

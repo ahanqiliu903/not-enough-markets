@@ -34,7 +34,12 @@
     "unrealized_pnl_usd",
     "open_unmarked",
     "open_no_bid_contracts",
-    "excluded_trades"
+    "excluded_trades",
+    "pending_locked_pnl_usd",
+    "pending_likely_pnl_usd",
+    "pending_locked",
+    "pending_likely",
+    "pending_conflict"
   ],
   "properties": {
     "schema_version": {
@@ -245,6 +250,49 @@
       "x-since": "1.1",
       "minimum": 0,
       "description": "trades excluded from statistics (nem trade exclude), settled and open: left out of trades, wins, win rate, edge, verdict, trades_to_detect, brier and the P&L statistics of this row (pnl_usd, roi, max_drawdown_usd), and of the portfolio's realized P&L, equity and open (treated as never taken); null only when an older 1.x file lacks the column"
+    },
+    "pending_locked_pnl_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "sum of provisional_pnl_usd over counted (not excluded) open trades whose result is locked_win or locked_loss: the P&L they add if they settle as the observed running extreme already decides; reporting only (nem.settle.provisional): never in realized P&L, equity, statistics or risk; Kalshi's settlement decides; 0 with no open trades, null when not computed (nem summary --no-provisional, fetch failed for the whole run) or an older 1.x file"
+    },
+    "pending_likely_pnl_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "same over likely_win / likely_loss (observed only at the exact extreme, or price at 98c+); conflicts are left out; reporting only (nem.settle.provisional): never in realized P&L, equity, statistics or risk; Kalshi's settlement decides; 0 with no open trades, null when not computed"
+    },
+    "pending_locked": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-since": "1.1",
+      "minimum": 0,
+      "description": "counted open trades with a locked result (won or lost); 0 with no open trades, null when not computed"
+    },
+    "pending_likely": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-since": "1.1",
+      "minimum": 0,
+      "description": "counted open trades with a likely result (won or lost); 0 with no open trades, null when not computed"
+    },
+    "pending_conflict": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-since": "1.1",
+      "minimum": 0,
+      "description": "counted open trades where the observed and price bases disagree (not summed); 0 with no open trades, null when not computed"
     }
   },
   "additionalProperties": true

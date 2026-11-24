@@ -16,7 +16,8 @@ if TYPE_CHECKING:
     from nem.core.config import PortfolioConfig
     from nem.core.types import Trade
     from nem.market.kalshi import KalshiClient, SeriesFees
-    from nem.stats.report import PortfolioReport
+    from nem.settle.provisional import Provisional
+    from nem.stats.report import MarkKey, PortfolioReport
     from nem.store import Store
 
 log = logging.getLogger("nem")
@@ -218,6 +219,10 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
         )
         p.add_argument("--alpha", type=float, default=0.05, help="false-positive rate")
         p.add_argument("--power", type=float, default=0.8, help="chance of detecting the edge")
+        p.add_argument(
+            "--no-provisional", action="store_true",
+            help="skip the pending (locked / likely) results of open trades: no network",
+        )  # fmt: skip
         return p
 
     summ = with_stats(
@@ -850,14 +855,42 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 
 def _reports(
-    store: "Store", portfolios: "list[PortfolioConfig]", now: datetime, args: argparse.Namespace
+    store: "Store",
+    portfolios: "list[PortfolioConfig]",
+    now: datetime,
+    args: argparse.Namespace,
+    history: bool = False,
 ) -> "list[PortfolioReport]":
-    """Every portfolio file's report, then imported manual portfolios (read-only)."""
+    """Every portfolio file's report, then imported manual portfolios (read-only).
+    `history`: with the value-over-time (`equity`) table, for the reporters."""
     from nem.stats.report import build_report, manual_reports
 
-    reports = [build_report(store, p, now, args.edge, args.alpha, args.power) for p in portfolios]
+    pending = {} if args.no_provisional else _provisional(store, portfolios, now)
+    reports = [
+        build_report(store, p, now, args.edge, args.alpha, args.power, pending.get(p.name), history)
+        for p in portfolios
+    ]
     names = [p.name for p in portfolios]
     return reports + manual_reports(store, now, names, args.edge, args.alpha, args.power)
+
+
+def _provisional(
+    store: "Store", portfolios: "list[PortfolioConfig]", now: datetime
+) -> "dict[str, dict[MarkKey, Provisional]]":
+    """Open trades' provisional results per portfolio (reporting only; one fetch per
+    station and market per run). Never raises: failures come back as `unknown`."""
+    from nem.settle.provisional import ProvisionalChecker
+
+    trades = {p.name: store.open_trades(portfolio=p.name) for p in portfolios}
+    if not any(trades.values()):
+        return {}
+    try:
+        with ProvisionalChecker(now) as checker:
+            checker.plan([t for ts in trades.values() for t in ts])
+            return {name: checker.check_all(ts) for name, ts in trades.items()}
+    except Exception as e:  # the report goes out without it
+        log.warning("provisional results unavailable: %s", e)
+        return {}
 
 
 def _render(store: "Store", portfolios: "list[PortfolioConfig]", now: datetime) -> str:
@@ -917,7 +950,7 @@ def cmd_report(args: argparse.Namespace) -> int:
                 except (ConfigError, PluginError) as e:
                     log.error("portfolio edit rejected, still reporting the old config: %s", e)
             now = datetime.now(UTC)
-            reports = _reports(store, portfolios, now, args)
+            reports = _reports(store, portfolios, now, args, history=not args.no_publish)
             print(render_all(reports))
             if not args.no_publish:
                 for report in reports:

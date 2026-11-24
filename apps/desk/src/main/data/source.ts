@@ -4,6 +4,7 @@ import {
   CONTRACT_MAJOR,
   type BacktestRun,
   type DataError,
+  type EquityRow,
   type PortfolioData,
   type StatusReport,
   type StrategyExtras,
@@ -18,6 +19,7 @@ import { errorField, errorMessage, validator, type SchemaName } from "./schemas"
  * Reads one folder source laid out like the engine's `out/`:
  *
  *   <root>/out/<portfolio>/{summary,strategies,trades}.csv
+ *   <root>/out/<portfolio>/equity.csv (contract 1.1, optional: absent from older engines)
  *   <root>/out/backtests/<run_id>.json
  *   <root>/out/summary.json or <root>/summary.json (same for status.json; optional)
  *
@@ -30,6 +32,8 @@ export interface LoadedPortfolio extends PortfolioData {
   /** Cell text of trades.csv as written, aligned with `trades` (for CSV export). */
   tradesRaw: string[][];
   tradesHeader: string[];
+  /** equity.csv rows; null when the file is absent (older engine) or blocked by an error. */
+  equity: EquityRow[] | null;
 }
 
 export interface LoadedSource {
@@ -45,6 +49,8 @@ export interface LoadedSource {
 }
 
 const TABLE_FILES = ["summary.csv", "strategies.csv", "trades.csv"] as const;
+/** Contract 1.1 table: read when present, never reported missing. */
+export const EQUITY_FILE = "equity.csv";
 
 function isDir(p: string): boolean {
   try {
@@ -140,6 +146,16 @@ export function loadPortfolio(root: string, dir: string): LoadedPortfolio {
   const summary = read<SummaryRow>("summary.csv", "summary_row.schema.json");
   const strategies = read<StrategyRow>("strategies.csv", "strategy_row.schema.json");
   const trades = read<TradeRow>("trades.csv", "trade_row.schema.json");
+  let equity: EquityRow[] | null = null;
+  if (isFile(join(dir, EQUITY_FILE))) {
+    const relFile = rel(root, join(dir, EQUITY_FILE));
+    const text = readText(join(dir, EQUITY_FILE), relFile, errors);
+    if (text !== null) {
+      const t = parseTable<EquityRow>(text, relFile, "equity_row.schema.json");
+      errors.push(...t.errors);
+      equity = t.rows;
+    }
+  }
 
   let summaryRow: SummaryRow | null = null;
   if (summary?.rows != null) {
@@ -161,6 +177,7 @@ export function loadPortfolio(root: string, dir: string): LoadedPortfolio {
     trades: trades?.rows ?? null,
     tradesRaw: trades?.raw ?? [],
     tradesHeader: trades?.header ?? [],
+    equity,
   };
 }
 
@@ -278,7 +295,7 @@ export function fingerprint(root: string): string {
     add(join(d, "status.json"));
   }
   for (const n of portfolioDirs(outDir)) {
-    for (const f of TABLE_FILES) add(join(outDir, n, f));
+    for (const f of [...TABLE_FILES, EQUITY_FILE]) add(join(outDir, n, f));
   }
   const bt = join(outDir, "backtests");
   add(bt);

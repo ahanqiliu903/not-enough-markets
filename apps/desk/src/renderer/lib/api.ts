@@ -44,6 +44,7 @@ const offline: NemApi = {
     trades: () => Promise.resolve({ ok: true, revision: 0, total: 0, offset: 0, rows: [] }),
     tradesCsv: () => Promise.resolve({ ok: true, csv: "", rows: 0 }),
     curves: () => Promise.resolve({ ok: true, curves: [] }),
+    equity: () => Promise.resolve({ ok: true, curve: null }),
     onChanged: () => () => undefined,
     db: { info: dbOffline, markets: dbOffline, top: dbOffline, depth: dbOffline, feed: dbOffline },
     updates: {
@@ -115,6 +116,7 @@ export const queryKeys = {
   snapshot: ["data", "snapshot"] as const,
   trades: ["data", "trades"] as const,
   curves: ["data", "curves"] as const,
+  equity: ["data", "equity"] as const,
   kalshi: ["kalshi"] as const,
   // Under "data" so a data:changed push (new snapshot DB, VPS sync) refetches them too.
   db: ["data", "db"] as const,

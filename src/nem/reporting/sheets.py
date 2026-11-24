@@ -5,8 +5,9 @@ Cloud service-account JSON key, and the spreadsheet ID is read from the env var 
 `sheet_id_env` (default `SHEET_ID`). Share the spreadsheet with the service account's
 email so it can write.
 
-Each portfolio writes only its own tabs, `<portfolio> summary`, `<portfolio> strategies`
-and `<portfolio> trades`, so several portfolios can share one spreadsheet.
+Each portfolio writes only its own tabs, `<portfolio> summary`, `<portfolio> strategies`,
+`<portfolio> trades` and (`nem report`) `<portfolio> equity`, so several portfolios can
+share one spreadsheet. Each tab is written in one update call.
 """
 
 import os
@@ -17,7 +18,7 @@ from pydantic import Field
 
 from nem.core.registry import PluginParams, register
 from nem.reporting.base import Reporter
-from nem.stats.report import Cell, PortfolioReport, tables
+from nem.stats.report import Cell, PortfolioReport, report_tables
 
 
 class SheetsError(RuntimeError):
@@ -75,7 +76,7 @@ class SheetsReporter(Reporter):
                 f"set SHEETS_CREDENTIALS and {self.sheet_id_env} to publish to Sheets"
             )
         sheet = self._opener(creds, sheet_id)
-        for table in tables(report):
+        for table in report_tables(report):
             values = [table.columns, *[[_cell(c) for c in row] for row in table.rows]]
             title = f"{report.portfolio.name} {table.name}"
             ws = self._worksheet(sheet, title, len(values) + 10, len(table.columns))

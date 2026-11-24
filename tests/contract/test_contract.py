@@ -5,6 +5,7 @@ import csv
 import filecmp
 import importlib.util
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,7 +13,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-from nem.stats.report import STRATEGY_COLUMNS, SUMMARY_COLUMNS, TRADE_COLUMNS
+from nem.stats.report import EQUITY_COLUMNS, STRATEGY_COLUMNS, SUMMARY_COLUMNS, TRADE_COLUMNS
 
 CONTRACT = Path(__file__).parents[2] / "contract"
 SCHEMAS: dict[str, dict[str, Any]] = {
@@ -113,6 +114,27 @@ def test_good_fixtures_validate(fixture: str) -> None:
         assert violations("backtest_run.schema.json", json.loads(run.read_text())) == []
 
 
+def test_equity_schema_matches_engine_columns() -> None:
+    schema = SCHEMAS["equity_row.schema.json"]
+    assert schema["required"] == EQUITY_COLUMNS
+    assert schema["x-since"] == "1.1"  # the whole table is a 1.1 addition
+
+
+@pytest.mark.parametrize("fixture", ["basic", "empty"])
+def test_equity_fixture_validates(fixture: str) -> None:
+    path = FIXTURES / fixture / "out" / "fixture" / "equity.csv"
+    with path.open(newline="") as f:
+        assert next(csv.reader(f)) == EQUITY_COLUMNS
+    rows = read_rows(path, "equity_row.schema.json")
+    assert [m for r in rows for m in violations("equity_row.schema.json", r)] == []
+    stamps = [str(r["ts"]) for r in rows]
+    assert stamps == sorted(stamps) and len(set(stamps)) == len(stamps)
+    if fixture == "basic":
+        summary = read_rows(path.with_name("summary.csv"), "summary_row.schema.json")[0]
+        assert stamps[-1] == summary["as_of"]  # the last point is the report time
+        assert rows[-1]["book_value_usd"] == summary["equity_usd"]
+
+
 def test_basic_fixture_covers_each_verdict() -> None:
     rows = read_rows(
         FIXTURES / "basic" / "out" / "fixture" / "strategies.csv", "strategy_row.schema.json"
@@ -136,6 +158,19 @@ def test_broken_fixtures_fail(case: str, message: str) -> None:
     assert any(message in e for e in found), found
 
 
+def same_db(a: Path, b: Path) -> bool:
+    return a.suffix == ".db" and db_content(a) == db_content(b)
+
+
+def db_content(path: Path) -> tuple[int, list[str]]:
+    conn = sqlite3.connect(path)
+    try:
+        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        return version, list(conn.iterdump())
+    finally:
+        conn.close()
+
+
 def test_fixtures_are_current(tmp_path: Path) -> None:
     spec = importlib.util.spec_from_file_location("gen", CONTRACT / "generate_fixtures.py")
     assert spec is not None and spec.loader is not None
@@ -145,7 +180,10 @@ def test_fixtures_are_current(tmp_path: Path) -> None:
     cmp = filecmp.dircmp(FIXTURES, tmp_path)
 
     def diffs(d: filecmp.dircmp[str]) -> list[str]:
-        out = [*d.left_only, *d.right_only, *d.diff_files]
+        # SQLite files are compared by content: their bytes depend on the SQLite library
+        # version (a Python patch release can change it), not only on what NEM wrote.
+        changed = [f for f in d.diff_files if not same_db(Path(d.left, f), Path(d.right, f))]
+        out = [*d.left_only, *d.right_only, *changed]
         for sub in d.subdirs.values():
             out += diffs(sub)
         return out

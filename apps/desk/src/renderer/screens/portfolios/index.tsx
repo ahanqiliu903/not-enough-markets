@@ -1,15 +1,17 @@
 import { useMemo, useState } from "react";
 import type { PortfolioData, Snapshot } from "@shared/data";
+import { LineChart, SERIES_COLORS, type LineSeries } from "../../data/charts";
 import { PixelIcon } from "../../components/PixelIcon";
 import { EmptyState } from "../../components/states";
 import { useCompare } from "../../data/compare";
-import { EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, pct, signClass, signedUsd, ts, unrealized, usd } from "../../data/format";
-import { allStrategies, errorsForFile } from "../../data/hooks";
+import { EQUITY_LABEL, EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, PENDING_NOTE, pct, pendingPnl, pendingSummary, signClass, signedUsd, ts, unrealized, usd } from "../../data/format";
+import { allStrategies, errorsForFile, useEquity } from "../../data/hooks";
 import { DataErrors, DATA_COMMANDS, SourceGate } from "../../data/states";
 import { StrategyBadge } from "../../data/StrategyBadge";
 import { useKeys } from "../../lib/keys";
 import { useRegisterCommands, type Command } from "../../state/commands";
 import { useNav } from "../../state/nav";
+import { colors } from "../../theme";
 
 /** Screen 1: one card per portfolio, with its strategies and their verdict tiers. */
 export default function PortfoliosScreen() {
@@ -154,11 +156,24 @@ function PortfolioCard({
             className={s.excluded_trades ? "excluded-count" : ""}
             title={`Trades ${EXCLUDED_NOTE}`}
           />
+          <Stat
+            label="Pending locked (not counted)"
+            value={pendingPnl(s.pending_locked_pnl_usd, s.pending_locked)}
+            className={signClass(s.pending_locked_pnl_usd)}
+            title={`P&L of open trades the observed running high/low already decides, if they settle that way (${PENDING_NOTE})`}
+          />
+          <Stat
+            label="Pending likely (not counted)"
+            value={pendingPnl(s.pending_likely_pnl_usd, s.pending_likely) + (s.pending_conflict ? `; ${int(s.pending_conflict)} conflict` : "")}
+            className={signClass(s.pending_likely_pnl_usd)}
+            title={`P&L of open trades likely decided (observed at the exact extreme, or a 98c+ price), if they settle that way; conflicts (observed vs price) are not summed (${PENDING_NOTE})`}
+          />
           <Stat label="Starting balance" value={usd(s.starting_balance_usd)} />
         </div>
       ) : (
         <DataErrors errors={summaryErrors} />
       )}
+      <EquityPanel portfolio={p.name} start={s?.starting_balance_usd ?? null} />
       {p.strategies === null ? (
         <DataErrors errors={strategyErrors} />
       ) : p.strategies.length === 0 ? (
@@ -183,6 +198,7 @@ function PortfolioCard({
                 <th className="num">Edge</th>
                 <th className="num">P&L</th>
                 <th className="num" title={`Open positions at ${MARK_LABEL}, minus entry cost`}>Unrealized</th>
+                <th className="num" title={`Provisional results of open trades: locked / likely P&L (count) if they settle that way; ${PENDING_NOTE}`}>Pending (not counted)</th>
                 <th>Compare</th>
               </tr>
             </thead>
@@ -216,6 +232,7 @@ function PortfolioCard({
                     <td className={`num ${signClass(r.edge_cents)}`}>{r.edge_cents === null ? "-" : `${r.edge_cents.toFixed(2)}c`}</td>
                     <td className={`num ${signClass(r.pnl_usd)}`}>{signedUsd(r.pnl_usd)}</td>
                     <td className={`num ${signClass(r.unrealized_pnl_usd)}`}>{r.open === 0 ? "-" : unrealized(r.unrealized_pnl_usd, r.open_unmarked, r.open_no_bid_contracts)}</td>
+                    <td className="num dim">{r.open === 0 ? "-" : pendingSummary(r)}</td>
                     <td className="dim">{compareIds.includes(id) ? "picked" : ""}</td>
                   </tr>
                 );
@@ -230,5 +247,54 @@ function PortfolioCard({
         </p>
       )}
     </section>
+  );
+}
+
+const fmtUsdAxis = (v: number) => usd(v, Math.abs(v) < 10 ? 2 : 0);
+
+/** The engine's value-over-time table (equity.csv, contract 1.1) as a line chart. */
+function EquityPanel({ portfolio, start }: { portfolio: string; start: number | null }) {
+  const q = useEquity(portfolio);
+  const curve = q.data?.ok === true ? q.data.curve : null;
+  const series = useMemo<LineSeries[]>(() => {
+    if (curve === null) return [];
+    return [
+      { label: "Value (marked)", color: colors.amber, values: curve.value },
+      { label: "At cost (realized only)", color: SERIES_COLORS[1], values: curve.book },
+      ...(start === null ? [] : [{ label: "Starting balance", color: colors.dim, values: curve.t.map(() => start), dash: [4, 4] }]),
+    ];
+  }, [curve, start]);
+  return (
+    <div className="equity-panel" role="group" aria-label={`Value over time: ${portfolio}`}>
+      <h3 className="equity-title">Portfolio value over time</h3>
+      {q.isPending ? (
+        <p className="dim">Loading value history...</p>
+      ) : q.data?.ok === false ? (
+        <DataErrors errors={q.data.errors} />
+      ) : curve === null ? (
+        <p className="dim" role="note">
+          No value history for {portfolio}: the source has no equity.csv (written by nem report since contract 1.1). Chart hidden.
+        </p>
+      ) : curve.t.length === 0 ? (
+        <p className="dim">No activity yet.</p>
+      ) : (
+        <>
+          <LineChart x={curve.t} series={series} time height={160} label={`Portfolio value over time: ${portfolio}`} yFormat={fmtUsdAxis} />
+          <p className="equity-legend dim">
+            {series.map((s) => (
+              <span key={s.label} className="equity-key">
+                <span className={`equity-swatch${s.dash !== undefined ? " dashed" : ""}`} style={{ borderColor: s.color }} />
+                {s.label}
+              </span>
+            ))}
+          </p>
+          <p className="dim">
+            {EQUITY_LABEL}. Last point: value <span className="num">{usd(curve.value.at(-1))}</span>, at cost{" "}
+            <span className="num">{usd(curve.book.at(-1))}</span>
+            {curve.lastUnmarked > 0 ? ` (${int(curve.lastUnmarked)} open unmarked, at cost)` : ""}; {int(curve.t.length)} points, hourly (UTC).
+          </p>
+        </>
+      )}
+    </div>
   );
 }

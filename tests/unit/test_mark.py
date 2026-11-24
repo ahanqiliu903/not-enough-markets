@@ -220,11 +220,17 @@ def test_report_empty_bid_side_is_full_loss() -> None:
     assert "; 5 contracts with no bids valued at $0 (pending loss)" in render_text(r)
 
 
+MARK_COLUMNS = (
+    "mark_bid_cents", "mark_mid_cents", "mark_contracts", "mark_value_usd",
+    "unrealized_pnl_usd", "marked_at",
+)  # fmt: skip
+
+
 def test_report_stale_snapshot_leaves_marks_empty() -> None:
     r = build_report(_store(depth=50), portfolio(), NOW + MARK_MAX_AGE)
     summary, _, trades = tables(r)
     row = dict(zip(trades.columns, trades.rows[0], strict=True))
-    assert all(row[c] is None for c in TRADE_COLUMNS[-8:-2])  # the mark columns
+    assert all(row[c] is None for c in MARK_COLUMNS)
     s = dict(zip(summary.columns, summary.rows[0], strict=True))
     assert (s["open_value_usd"], s["open_unmarked"], s["open_no_bid_contracts"]) == (None, 1, None)
     assert "none of 1 open has a fresh book" in render_text(r)
@@ -236,7 +242,7 @@ def test_settled_trades_have_no_mark_columns() -> None:
     _, _, trades = tables(build_report(store, portfolio(), NOW))
     row = dict(zip(trades.columns, trades.rows[0], strict=True))
     assert row["result"] == "won"
-    assert all(row[c] is None for c in TRADE_COLUMNS[-8:-2])  # the mark columns
+    assert all(row[c] is None for c in MARK_COLUMNS)
 
 
 def test_basic_fixture_has_mark_columns() -> None:

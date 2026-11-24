@@ -5,7 +5,7 @@ database, paper-traded by the same Runner as `nem run`, then reported by the sam
 `nem report`, `nem summary --json`, `nem status --json` and `nem suggest`. Re-running
 writes identical files (tests/contract checks that the committed copy is current).
 
-    basic/     nem.db, out/fixture/{summary,strategies,trades}.csv, summary.json,
+    basic/     nem.db, out/fixture/{summary,strategies,trades,equity}.csv, summary.json,
                status.json, out/backtests/<run_id>.json
     empty/     the same files with no rows
     broken/    one folder per failure the app must report: missing_column,
@@ -163,7 +163,7 @@ def basic(root: Path) -> None:
             store.heartbeat(end + timedelta(minutes=minute), "runner", "ok")
             store.heartbeat(end + timedelta(minutes=minute), "reporter", "ok")
         store.halt("fixture/eth_no_edge", "fixture: verdict no_edge", end)
-        report = build_report(store, portfolio, as_of)
+        report = build_report(store, portfolio, as_of, history=True)
         CsvReporter(CsvReporter.Params(path=str(root / "out"))).publish(report)
         _write_json(
             root / "summary.json",
@@ -191,7 +191,7 @@ def empty(root: Path) -> None:
     as_of = START
     db = root / "nem.db"
     with Store(db) as store:
-        report = build_report(store, portfolio, as_of)
+        report = build_report(store, portfolio, as_of, history=True)
         CsvReporter(CsvReporter.Params(path=str(root / "out"))).publish(report)
         _write_json(
             root / "summary.json",

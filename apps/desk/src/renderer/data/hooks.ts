@@ -29,6 +29,11 @@ export function useCurves(keys: readonly CurveKey[]) {
   });
 }
 
+/** A portfolio's value over time (equity.csv, contract 1.1); `curve` null when absent. */
+export function useEquity(portfolio: string) {
+  return useQuery({ queryKey: [...queryKeys.equity, portfolio], queryFn: () => nem().data.equity(portfolio) });
+}
+
 /**
  * Mounted once by the shell: refetches every data query when main says the active
  * source's files changed, and reveals screens that need data (Backtests).
