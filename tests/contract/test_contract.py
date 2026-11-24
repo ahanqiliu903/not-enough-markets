@@ -5,6 +5,7 @@ import csv
 import filecmp
 import importlib.util
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any, cast
 
@@ -136,6 +137,19 @@ def test_broken_fixtures_fail(case: str, message: str) -> None:
     assert any(message in e for e in found), found
 
 
+def same_db(a: Path, b: Path) -> bool:
+    return a.suffix == ".db" and db_content(a) == db_content(b)
+
+
+def db_content(path: Path) -> tuple[int, list[str]]:
+    conn = sqlite3.connect(path)
+    try:
+        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        return version, list(conn.iterdump())
+    finally:
+        conn.close()
+
+
 def test_fixtures_are_current(tmp_path: Path) -> None:
     spec = importlib.util.spec_from_file_location("gen", CONTRACT / "generate_fixtures.py")
     assert spec is not None and spec.loader is not None
@@ -145,7 +159,10 @@ def test_fixtures_are_current(tmp_path: Path) -> None:
     cmp = filecmp.dircmp(FIXTURES, tmp_path)
 
     def diffs(d: filecmp.dircmp[str]) -> list[str]:
-        out = [*d.left_only, *d.right_only, *d.diff_files]
+        # SQLite files are compared by content: their bytes depend on the SQLite library
+        # version (a Python patch release can change it), not only on what NEM wrote.
+        changed = [f for f in d.diff_files if not same_db(Path(d.left, f), Path(d.right, f))]
+        out = [*d.left_only, *d.right_only, *changed]
         for sub in d.subdirs.values():
             out += diffs(sub)
         return out
