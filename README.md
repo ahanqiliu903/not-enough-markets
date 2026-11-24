@@ -161,6 +161,7 @@ mode: paper
 starting_balance: 1000
 interest_apy: 0.0325             # Kalshi's current rate; it changes, so check it. null = off
 check_every: 5s                  # default for every strategy below
+max_snapshot_age: 2m             # never enter on a market snapshot older than this (default 2m)
 risk: {daily_loss_cap: null, max_open_positions: 3}   # null = disabled
 
 feeds:

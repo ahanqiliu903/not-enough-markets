@@ -227,6 +227,10 @@ class PortfolioConfig(_Strict):
     # eligibility rules, so set it yourself; null = no interest. Paper portfolios only.
     interest_apy: float | None = Field(default=None, ge=0, lt=1)
     check_every: Duration = timedelta(seconds=5)
+    # Entries only act on a market snapshot taken at most this long before the decision
+    # (and never after it). Live polls and replays stamp snapshots with the tick time, so
+    # the age is normally ~0; this catches a stalled source or mis-stamped data.
+    max_snapshot_age: Duration = timedelta(minutes=2)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     feeds: list[FeedSpec] = Field(default_factory=list[FeedSpec])
     strategies: list[StrategyConfig] = Field(default_factory=list[StrategyConfig])

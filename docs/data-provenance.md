@@ -399,6 +399,9 @@ contracts with `fixed` sizing). Stops sell at the minute's bid. Take-profit: `pe
 never fills at 99c, `realistic` / `optimistic` read resting bids (here only the top of
 book), `trade_through` counts prints (upper bound, see docs/exits-and-fills.md). Fees must be
 set in the portfolio file (`taker_fee_rate`, `maker_fee_rate`): nothing is looked up.
+A market's latest quote is carried forward to every minute until the next candle and
+stamped with that minute, so it passes the engine's `max_snapshot_age` check: replay
+assumes the last known quote still stands, which a quiet market may not honor.
 
 **Reporting.** Every result is labeled "historical candles, no depth" (and "backfilled
 forecasts" when a forecast gate reads backfill) and every verdict goes through

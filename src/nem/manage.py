@@ -17,6 +17,7 @@ mode: paper
 starting_balance: {balance}
 interest_apy: null        # Kalshi's APY on cash + positions, e.g. 0.0325. It changes; check it.
 check_every: 5s           # how often strategies look for entries (override per strategy)
+max_snapshot_age: 2m      # never enter on a market snapshot older than this
 
 risk:                     # portfolio-wide limits; null = disabled (never 0)
   daily_loss_cap: null

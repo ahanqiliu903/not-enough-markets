@@ -5,6 +5,7 @@ what each gate, sizer and risk limit actually did.
 """
 
 import logging
+from datetime import datetime, timedelta
 
 from nem.core.context import Context, DataUnavailable
 from nem.core.types import Decision, DecisionKind, Fill, MarketSnapshot, Order, Signal, Trade
@@ -41,6 +42,16 @@ def check_gate(gate: Gate, signal: Signal, snap: MarketSnapshot, ctx: Context) -
         return Decision.skip(f"{gate.name}:error:{type(e).__name__}")
 
 
+def snapshot_problem(snap: MarketSnapshot, now: datetime, max_age: timedelta) -> str | None:
+    """Why a snapshot can't be traded on at `now`, or None. A snapshot from after `now`
+    is look-ahead; one older than `max_age` is a stale book. Exactly `max_age` is fine."""
+    if snap.ts > now:
+        return "snapshot:future"
+    if now - snap.ts > max_age:
+        return "snapshot:stale"
+    return None
+
+
 def _log(
     rt: StrategyRuntime, store: Store, sig: Signal, ctx: Context, kind: DecisionKind, reason: str
 ) -> None:
@@ -56,6 +67,17 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
     """Decide on one market for one strategy. Returns the new trade, if any."""
     if store.has_trade(rt.key, snap.window_id):
         return None  # one position per strategy per market window
+    stale = snapshot_problem(snap, ctx.now(), rt.portfolio.max_snapshot_age)
+    if stale is not None:
+        # Checked before the signal sees the snapshot: a future one would be look-ahead.
+        marker = (snap.window_id, "skip", stale)
+        if marker not in rt.logged:
+            rt.logged.add(marker)
+            log.warning(
+                "%s/%s: %s %s at %s, decision at %s; not entering",
+                *rt.key, stale, snap.ticker, snap.ts.isoformat(), ctx.now().isoformat(),
+            )  # fmt: skip
+        return None
     try:
         sig = rt.signal.on_market(snap, ctx)
     except DataUnavailable:
