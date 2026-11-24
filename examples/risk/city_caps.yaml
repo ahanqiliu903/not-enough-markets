@@ -1,0 +1,42 @@
+# Example: weather strategies in several cities sharing one per-city exposure cap, with
+# Washington DC excluded by config. Values are illustrative, not tuned on any data.
+#
+# - risk.max_city_allocation: dollars at cost in open positions per settlement station,
+#   summed over every strategy in the portfolio (the high and low series of one city share
+#   a station, so they share the cap). Markets whose series has no station mapping in
+#   nem.settle.stations are blocked while the cap is set. null = off; 0 is rejected.
+# - city_filter gate: allow and/or exclude stations by ICAO id (KDCA = Washington DC).
+#   A series with no station mapping is always blocked, whatever fail_open says.
+#   Re-admit DC by removing it from `exclude` once replay supports it.
+name: city_caps
+mode: paper
+starting_balance: 1000
+check_every: 5m
+risk:
+  max_city_allocation: 50
+  max_open_positions: 10
+
+strategies:
+  - name: nyc_high
+    series: KXHIGHNY
+    signal:
+      type: extreme_favorite
+      threshold: 0.85
+      min_edge: 0.01
+      priors: {yes: {wins: 90, n: 100}, no: {wins: 90, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.95}
+      - {type: city_filter, exclude: [KDCA]}
+    sizing: {type: fixed, contracts: 5}
+
+  - name: dc_high              # stays configured, but the filter blocks every entry
+    series: KXHIGHTDC
+    signal:
+      type: extreme_favorite
+      threshold: 0.85
+      min_edge: 0.01
+      priors: {yes: {wins: 90, n: 100}, no: {wins: 90, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.95}
+      - {type: city_filter, exclude: [KDCA]}
+    sizing: {type: fixed, contracts: 5}

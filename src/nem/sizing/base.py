@@ -18,4 +18,4 @@ class Sizer(Plugin):
 
 
 def cost_per_contract(signal: Signal, ctx: Context) -> float:
-    return signal.limit_price + fee_per_contract(signal.limit_price, ctx.strategy.taker_fee_rate)
+    return signal.limit_price + fee_per_contract(signal.limit_price, ctx.strategy.taker_rate)

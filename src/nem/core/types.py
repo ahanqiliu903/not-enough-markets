@@ -187,10 +187,18 @@ class Trade:
     won: bool | None = None  # None until settled
     realized_pnl: float | None = None
     settled_at: datetime | None = None
+    # `nem trade exclude`: kept and listed, but treated as never taken: left out of every
+    # statistic (win rate, edge, verdict, ctx.stat) and of money (P&L, equity, cash, risk)
+    excluded_at: datetime | None = None
+    exclude_reason: str | None = None
 
     @property
     def settled(self) -> bool:
         return self.settled_at is not None
+
+    @property
+    def excluded(self) -> bool:
+        return self.excluded_at is not None
 
     @property
     def cost(self) -> float:
@@ -228,3 +236,98 @@ class FeedValue:
 
     def __post_init__(self) -> None:
         _require_aware("known_at", self.known_at)
+
+
+ManualExit = Literal["sold_at_99c", "sold", "settled_won", "settled_lost"]
+
+
+@dataclass(frozen=True, slots=True)
+class ManualLot:
+    """One closed lot of your own (manual) Kalshi trading, imported from Kalshi's
+    realized-PnL export (`nem import kalshi-pnl`). History only: the engine never trades it.
+
+    `realized_pnl` is Kalshi's `realized_pnl_with_fees`, the truth for money; it is never
+    recomputed from prices. Quantities can be fractional.
+    """
+
+    portfolio: str
+    strategy: str
+    lot_key: str  # stable id of the source row, so a re-import adds nothing (see manual.py)
+    ticker: str
+    side: Side
+    qty: float
+    entry_price: float
+    exit_price: float  # 0.99 sell, other sells (stop-outs), or settlement at 1.00 / 0.00
+    open_fees: float
+    close_fees: float
+    pnl_without_fees: float
+    realized_pnl: float
+    opened_at: datetime
+    closed_at: datetime
+    source_file: str  # base name only
+    source_line: int
+
+    def __post_init__(self) -> None:
+        _require_aware("opened_at", self.opened_at)
+        _require_aware("closed_at", self.closed_at)
+        _require_price("entry_price", self.entry_price)
+        _require_price("exit_price", self.exit_price)
+        if self.qty <= 0:
+            raise ValueError(f"qty must be positive, got {self.qty}")
+
+    @property
+    def series(self) -> str:
+        return self.ticker.split("-", 1)[0]
+
+    @property
+    def notional(self) -> float:
+        """Entry price times contracts, without fees."""
+        return self.entry_price * self.qty
+
+    @property
+    def fee(self) -> float:
+        return self.open_fees + self.close_fees
+
+    @property
+    def cost(self) -> float:
+        """Entry notional plus all fees: what the stats treat as the price of the bet."""
+        return self.notional + self.fee
+
+    @property
+    def won(self) -> bool:
+        """A win is a lot whose P&L after fees is positive (a 0.99 sell usually is)."""
+        return self.realized_pnl > 0
+
+    @property
+    def exit(self) -> ManualExit:
+        # Kalshi trades between 1c and 99c, so exits at exactly 1.00 / 0.00 are settlements
+        if self.exit_price >= 1.0:
+            return "settled_won"
+        if self.exit_price <= 0.0:
+            return "settled_lost"
+        return "sold_at_99c" if round(self.exit_price, 4) == 0.99 else "sold"
+
+
+Liquidity = Literal["maker", "taker"]
+
+
+@dataclass(frozen=True, slots=True)
+class ManualFill:
+    """One fill from Kalshi's activity export, imported alongside manual lots for exact fill
+    times and maker/taker. `price` is what was paid per contract for `side`."""
+
+    portfolio: str
+    fill_key: str
+    ticker: str
+    side: Side
+    qty: float
+    price: float
+    fee: float
+    liquidity: Liquidity
+    filled_at: datetime
+    source_file: str
+    source_line: int
+
+    def __post_init__(self) -> None:
+        _require_aware("filled_at", self.filled_at)
+        _require_price("price", self.price)

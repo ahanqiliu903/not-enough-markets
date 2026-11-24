@@ -59,6 +59,7 @@ export function parseFilter(req: unknown): TradesFilter {
   if (strategy !== undefined) f.strategy = strategy;
   if (text !== undefined) f.text = text;
   if (RESULTS.includes(r["result"] as TradeResult)) f.result = r["result"] as TradeResult;
+  if (r["hideExcluded"] === true) f.hideExcluded = true;
   return f;
 }
 

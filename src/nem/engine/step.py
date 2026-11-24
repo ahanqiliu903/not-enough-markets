@@ -66,7 +66,7 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         return None
 
     est_cost = sizing.qty * sig.limit_price
-    d = check_risk(ctx, est_cost)
+    d = check_risk(ctx, est_cost, sig.ticker)
     if not d.take:
         _log(rt, store, sig, ctx, "skip", d.reason)
         return None

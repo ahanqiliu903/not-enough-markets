@@ -32,6 +32,10 @@ def test_v1_database_is_migrated(tmp_path: Path) -> None:
         " ALTER TABLE snapshots DROP COLUMN strike_type;"  # v3
         " ALTER TABLE snapshots DROP COLUMN floor_strike;"
         " ALTER TABLE snapshots DROP COLUMN cap_strike;"
+        " DROP TABLE manual_lots; DROP TABLE manual_fills;"  # v4
+        " DROP TABLE settlement_checks;"  # v5
+        " DROP TABLE forecast_backfill;"  # v6
+        " DROP TABLE exit_learning;"  # v7
         " PRAGMA user_version = 1;"
     )
     conn.close()

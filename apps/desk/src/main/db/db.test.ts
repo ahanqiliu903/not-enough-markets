@@ -69,7 +69,7 @@ describe("DbReader on contract/fixtures/basic/nem.db", () => {
     const r = reader().info(DB);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.schemaVersion).toBe(3);
+    expect(r.value.schemaVersion).toBe(8);
     expect(r.value.series.map((s) => s.series)).toEqual(["KXBTC15M", "KXETH15M", "KXSOL15M"]);
     expect(r.value.series[0]?.snapshots).toBe(2550);
     expect(r.value.feeds).toEqual([
@@ -162,7 +162,7 @@ describe("DbReader errors are values", () => {
     const r = reader().info(p);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.error).toMatchObject({ kind: "schema_version", expected: "3", found: "9" });
+    expect(r.error).toMatchObject({ kind: "schema_version", expected: "3, 4, 5, 6, 7, 8", found: "9" });
   });
 
   it("refuses a live database (a -wal file beside it)", () => {
@@ -209,7 +209,7 @@ describe("DbReader errors are values", () => {
     const rd = reader();
     expect(rd.info(p).ok).toBe(true);
     const next = join(d, "next.db");
-    makeDb(next, (db) => db.exec("PRAGMA user_version = 4;"));
+    makeDb(next, (db) => db.exec("PRAGMA user_version = 9;"));
     copyFileSync(next, `${p}.tmp`);
     rmSync(p);
     copyFileSync(`${p}.tmp`, p);

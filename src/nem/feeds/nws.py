@@ -37,23 +37,26 @@ class NwsForecast(Feed):
     class Params(PluginParams):
         lat: float = Field(ge=-90, le=90)
         lon: float = Field(ge=-180, le=180)
-        user_agent: str = http.USER_AGENT  # NWS asks for contact info; put yours here
+        # NWS asks for contact info: null = $NEM_USER_AGENT (keep contacts out of tracked
+        # files), else a generic one
+        user_agent: str | None = None
 
     def __init__(self, params: Params) -> None:
         self.p = params
+        self.user_agent = http.user_agent(params.user_agent)
         self._forecast_url: str | None = None
 
     def _url(self) -> str:
         if self._forecast_url is None:
             points = http.get_json(
                 f"https://api.weather.gov/points/{self.p.lat:.4f},{self.p.lon:.4f}",
-                self.p.user_agent,
+                self.user_agent,
             )
             self._forecast_url = str(points["properties"]["forecast"])
         return self._forecast_url
 
     def fetch(self, now: datetime) -> Sequence[Observation]:
-        props: dict[str, Any] = http.get_json(self._url(), self.p.user_agent)["properties"]
+        props: dict[str, Any] = http.get_json(self._url(), self.user_agent)["properties"]
         issued = props.get("updateTime") or props.get("generatedAt")
         known_at = min(datetime.fromisoformat(issued), now) if issued else now
         highs: dict[date, float] = {}

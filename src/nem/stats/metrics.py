@@ -12,10 +12,23 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from statistics import NormalDist, fmean
-
-from nem.core.types import Trade
+from typing import Protocol
 
 Z = NormalDist()
+
+
+class Bet(Protocol):
+    """What the statistics need from a settled position: an engine `Trade`, or an imported
+    `ManualLot` (whose quantity can be fractional and whose win is P&L after fees > 0)."""
+
+    @property
+    def qty(self) -> float: ...
+    @property
+    def cost(self) -> float: ...
+    @property
+    def won(self) -> bool | None: ...
+    @property
+    def realized_pnl(self) -> float | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +37,7 @@ class Interval:
     high: float
 
 
-def cost_per_contract(t: Trade) -> float:
+def cost_per_contract(t: Bet) -> float:
     """Price plus fees per contract: the trade's break-even win probability."""
     return t.cost / t.qty
 
@@ -71,7 +84,7 @@ class Sprt:
 
 
 def sprt(
-    trades: Sequence[Trade], edge: float = 0.02, alpha: float = 0.05, power: float = 0.8
+    trades: Sequence[Bet], edge: float = 0.02, alpha: float = 0.05, power: float = 0.8
 ) -> Sprt:
     beta = 1 - power
     upper, lower = math.log((1 - beta) / alpha), math.log(beta / (1 - alpha))
@@ -155,7 +168,7 @@ class StrategyStats:
 
 
 def strategy_stats(
-    trades: Sequence[Trade],
+    trades: Sequence[Bet],
     p_models: Sequence[float | None] = (),
     target_edge: float = 0.02,
     alpha: float = 0.05,

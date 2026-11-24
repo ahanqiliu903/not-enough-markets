@@ -27,6 +27,10 @@ def default_routes(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=fixture("orderbooks"))
     if path == "/exchange/status":
         return httpx.Response(200, json=fixture("exchange_status"))
+    if path.startswith("/series/"):  # synthetic: taker fees only, multiplier 1
+        body = fixture("series")
+        body["series"]["ticker"] = path.removeprefix("/series/")
+        return httpx.Response(200, json=body)
     if path.startswith("/markets/"):  # a settled market, relabelled as the one asked for
         body = fixture("market_settled")
         ticker = path.removeprefix("/markets/")

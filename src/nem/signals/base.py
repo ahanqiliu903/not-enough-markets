@@ -16,8 +16,10 @@ class SignalPlugin(Plugin):
         raise NotImplementedError
 
     def on_settle(self, trade: Trade, ctx: Context) -> None:
-        """Called after one of this strategy's trades settles. Win counts per side are
-        already in `ctx.stat(side)`; override to learn anything else."""
+        """Called once per trade when its market settles. Win counts per side are already
+        in `ctx.stat(side)`; override to learn anything else. For a trade closed early by
+        an exit this comes at the market's settlement, with `won` = whether the side won
+        at settlement; its `realized_pnl` and `settled_at` stay the exit's."""
 
     def feeds_used(self) -> Sequence[str]:
         """Feed names this signal reads, checked against the portfolio at startup."""

@@ -1,2 +1,2 @@
-schema_version,portfolio,mode,as_of,started_at,starting_balance_usd,realized_pnl_usd,interest_usd,equity_usd,return_rate,open_positions,open_cost_usd,interest_apy,cash_benchmark_usd,pnl_vs_cash_usd
-1.0,fixture,paper,2026-10-02T18:35:00Z,2026-10-01T00:00:00Z,1000.0,58.92,0.22,1059.14,0.0591,0,0,0.04,0.19,58.95
+schema_version,portfolio,mode,as_of,started_at,starting_balance_usd,realized_pnl_usd,interest_usd,equity_usd,return_rate,open_positions,open_cost_usd,interest_apy,cash_benchmark_usd,pnl_vs_cash_usd,open_value_usd,unrealized_pnl_usd,open_unmarked,open_no_bid_contracts,excluded_trades
+1.0,fixture,paper,2026-10-02T18:35:00Z,2026-10-01T00:00:00Z,1000.0,58.92,0.22,1059.14,0.0591,0,0,0.04,0.19,58.95,0.0,0.0,0,0,0

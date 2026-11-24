@@ -53,7 +53,7 @@ class ExtremeFavorite(SignalPlugin):
             if prior.n + n == 0:
                 return None  # no prior and no history: no estimate, no trade
             p_model = (prior.wins + wins) / (prior.n + n)
-            fee = fee_per_contract(ask, ctx.strategy.taker_fee_rate)
+            fee = fee_per_contract(ask, ctx.strategy.taker_rate)
             edge = p_model - ask - fee
             if edge < self.p.min_edge:
                 return None

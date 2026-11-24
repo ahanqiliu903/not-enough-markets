@@ -19,11 +19,19 @@ from nem.core.clock import Clock, ManualClock
 from nem.core.config import PortfolioConfig
 from nem.core.context import Context
 from nem.core.types import FeedValue, Trade
-from nem.engine.runtime import FeedRuntime, StrategyRuntime, build_feeds, build_strategies
+from nem.engine.exits import run_exits
+from nem.engine.runtime import (
+    BuildError,
+    FeedRuntime,
+    StrategyRuntime,
+    build_feeds,
+    build_strategies,
+)
 from nem.engine.settlement import accrue_interest, settle_due
 from nem.engine.step import evaluate
+from nem.execution.exits import TradedVolume
 from nem.market.kalshi import KalshiError
-from nem.market.source import MarketSource, Tick
+from nem.market.source import MarketSource, PrintSource, Tick
 from nem.store import Store
 
 log = logging.getLogger(__name__)
@@ -47,10 +55,25 @@ class Runner:
         self._fetch = fetch_feeds
         self.feeds: list[FeedRuntime] = build_feeds(self.portfolios) if fetch_feeds else []
         self.source = source
+        self._traded: TradedVolume | None = (
+            source.traded_volume if isinstance(source, PrintSource) else None
+        )
+        self._check_prints(self.strategies)
         self.store = store
         self.data = data or store
         self.clock = clock
         self._by_key = {rt.key: rt for rt in self.strategies}
+
+    def _check_prints(self, strategies: Sequence[StrategyRuntime]) -> None:
+        if self._traded is not None:
+            return
+        for rt in strategies:
+            tp = rt.config.exit.take_profit if rt.config.exit is not None else None
+            if tp is not None and tp.fill_model == "trade_through":
+                raise BuildError(
+                    f"{rt.key[0]}/{rt.key[1]}: fill_model trade_through needs trade prints,"
+                    " which only historical replays have (nem history replay)"
+                )
 
     @property
     def series(self) -> list[str]:
@@ -61,7 +84,7 @@ class Runner:
 
     def _on_settle(self, trade: Trade) -> None:
         rt = self._by_key.get((trade.portfolio, trade.strategy))
-        if rt is not None:
+        if rt is not None and not trade.excluded:  # excluded trades teach the signal nothing
             rt.signal.on_settle(trade, self.context(rt))
 
     def _equity_at(self, p: PortfolioConfig, at: datetime) -> float:
@@ -89,6 +112,10 @@ class Runner:
         settle_due(self.store, self.source, now, self._on_settle)
         accrue_interest(self.store, self.portfolios, now, self._equity_at)
         self._fetch_feeds(now)
+        # Exits close positions, so they run for paused and halted strategies too (a halt
+        # stops new entries). No-op for strategies that hold to settlement.
+        for rt in self.strategies:
+            run_exits(rt, tick.snapshots, now, self.store, self._traded)
         trades: list[Trade] = []
         for rt in self.strategies:
             if rt.config.status != "active":
@@ -119,6 +146,7 @@ class Runner:
         happens first, so an invalid edit raises and leaves the running set untouched.
         Per-strategy state (last check, logged skips) carries over by key."""
         strategies = build_strategies(portfolios)
+        self._check_prints(strategies)
         feeds = build_feeds(portfolios) if self.feeds or any(p.feeds for p in portfolios) else []
         for rt in strategies:
             old = self._by_key.get(rt.key)

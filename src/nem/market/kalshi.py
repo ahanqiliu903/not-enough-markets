@@ -32,6 +32,10 @@ class KalshiError(RuntimeError):
     pass
 
 
+class KalshiNotFound(KalshiError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class KalshiMarket:
     ticker: str
@@ -96,6 +100,23 @@ def parse_market(m: dict[str, Any]) -> KalshiMarket:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SeriesFees:
+    """How Kalshi charges a series (GET /series/{ticker})."""
+
+    series: str
+    fee_type: str  # "quadratic", "quadratic_with_maker_fees", "flat", ...
+    fee_multiplier: float
+
+
+def parse_series_fees(series: dict[str, Any]) -> SeriesFees:
+    """Raises KalshiError when either field is missing: the fee must never be guessed."""
+    fee_type, multiplier = series.get("fee_type"), _number(series.get("fee_multiplier"))
+    if not isinstance(fee_type, str) or not fee_type or multiplier is None:
+        raise KalshiError(f"series {series.get('ticker')!r}: no fee_type / fee_multiplier")
+    return SeriesFees(str(series.get("ticker", "")), fee_type, multiplier)
+
+
 def parse_orderbook(book: dict[str, Any]) -> Depth:
     """`{"yes_dollars": [["0.77", "9015.74"], ...], "no_dollars": [...]}` -> best-first."""
 
@@ -143,6 +164,8 @@ class KalshiClient:
             if r.status_code == 429 or r.status_code >= 500:
                 problem = f"HTTP {r.status_code}"
                 continue
+            if r.status_code == 404:
+                raise KalshiNotFound(f"GET {path}: HTTP 404")
             if r.is_error:
                 raise KalshiError(f"GET {path}: HTTP {r.status_code}: {r.text[:200]}")
             body: dict[str, Any] = r.json()
@@ -167,6 +190,32 @@ class KalshiClient:
 
     def market(self, ticker: str) -> KalshiMarket:
         return parse_market(self._get(f"/markets/{ticker}")["market"])
+
+    def market_detail(self, ticker: str) -> dict[str, Any]:
+        """The raw market, rules included. Older settled markets are only served by the
+        historical endpoint (the live one answers 404)."""
+        try:
+            body = self._get(f"/markets/{ticker}")
+        except KalshiNotFound:
+            body = self._get(f"/historical/markets/{ticker}")
+        market: dict[str, Any] = body["market"]
+        return market
+
+    def series_list(self) -> list[dict[str, Any]]:
+        """Every series Kalshi lists (raw), following the cursor."""
+        out: list[dict[str, Any]] = []
+        cursor = ""
+        while True:
+            params = {"limit": 1000, **({"cursor": cursor} if cursor else {})}
+            body = self._get("/series", params)
+            out.extend(body.get("series") or [])
+            cursor = body.get("cursor") or ""
+            if not cursor:
+                return out
+
+    def series_fees(self, series: str) -> SeriesFees:
+        fees = parse_series_fees(self._get(f"/series/{series}")["series"])
+        return SeriesFees(series, fees.fee_type, fees.fee_multiplier)
 
     def orderbooks(self, tickers: Sequence[str]) -> dict[str, Depth]:
         out: dict[str, Depth] = {}
