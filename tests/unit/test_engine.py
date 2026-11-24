@@ -252,15 +252,41 @@ def test_risk_errors_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- gates failing, feeds ------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("fail_open", "trades"), [(True, 1), (False, 0)])
-def test_crashing_gate_respects_fail_open(fail_open: bool, trades: int) -> None:
+@pytest.mark.parametrize("fail_open", [True, False])
+def test_crashing_gate_always_blocks(fail_open: bool) -> None:
+    # fail_open covers missing or stale data (DataUnavailable) only; a bug always vetoes
     w = window(OPEN)
     strat = strategy(gates=[{"type": "test_crashes", "fail_open": fail_open}])
     runner, store, _ = make_runner(w, strategies=[strat])
     runner.run(ticks(w))
-    assert len(store.open_trades()) == trades
+    assert store.open_trades() == []
+    assert store.order_attempts(KEY, w[0].window_id, "yes") == 0
+    assert store.signal_reasons(*KEY) == {"test_crashes:error:RuntimeError": 1}
+
+
+@register("gate", "test_unavailable")
+class Unavailable(Gate):
+    def check(self, signal: Signal, snap: MarketSnapshot, ctx: Context) -> Decision:
+        raise DataUnavailable("no data")
+
+
+@pytest.mark.parametrize("fail_open", [True, False])
+def test_check_gate_fail_open_covers_unavailable_data_only(fail_open: bool) -> None:
+    from nem.engine.step import check_gate
+
+    w = window(OPEN)
+    runner, _, _ = make_runner(w)
+    rt = runner.strategies[0]
+    ctx = runner.context(rt)
+    sig = rt.signal.on_market(w[0], ctx)
+    assert sig is not None
+    d = check_gate(Unavailable(GateParams(fail_open=fail_open)), sig, w[0], ctx)
+    assert d.take is fail_open
     if not fail_open:
-        assert store.signal_reasons(*KEY) == {"test_crashes:error_fail_closed": 1}
+        assert d.reason == "test_unavailable:fail_closed"
+    d = check_gate(Crashes(GateParams(fail_open=fail_open)), sig, w[0], ctx)
+    assert not d.take
+    assert d.reason == "test_crashes:error:RuntimeError"
 
 
 FEED = {"name": "minute", "type": "test_clock_feed", "every": "1m", "max_age": "90s"}

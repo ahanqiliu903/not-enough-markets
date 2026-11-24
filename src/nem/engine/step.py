@@ -17,19 +17,20 @@ log = logging.getLogger(__name__)
 
 
 def check_gate(gate: Gate, signal: Signal, snap: MarketSnapshot, ctx: Context) -> Decision:
-    """Run one gate. If its data is missing or it errors, `fail_open` decides."""
+    """Run one gate. If its data is missing or stale (`DataUnavailable`), `fail_open`
+    decides. Any other exception is a bug, and a bug never lets a trade through: it always
+    blocks, whatever `fail_open` says, with the error type in the logged reason."""
     try:
         return gate.check(signal, snap, ctx)
     except DataUnavailable as e:
         outcome = "fail_open" if gate.fail_open else "fail_closed"
         log.info("gate %s: %s (%s)", gate.name, e, outcome)
-    except Exception:
-        outcome = "fail_open" if gate.fail_open else "fail_closed"
-        log.exception("gate %s errored (%s)", gate.name, outcome)
-        outcome = f"error_{outcome}"
-    if gate.fail_open:
-        return Decision.ok()
-    return Decision.skip(f"{gate.name}:{outcome}")
+        if gate.fail_open:
+            return Decision.ok()
+        return Decision.skip(f"{gate.name}:{outcome}")
+    except Exception as e:
+        log.exception("gate %s errored; blocking the trade", gate.name)
+        return Decision.skip(f"{gate.name}:error:{type(e).__name__}")
 
 
 def _log(

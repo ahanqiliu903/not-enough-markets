@@ -327,7 +327,7 @@ A desktop app (macOS, Windows) for looking at what the engine exports. It's read
 - **Every signal is logged with a reason**, including the ones that were skipped, so you can measure what each gate actually did.
 - **Kalshi's fees and interest are part of every number.** Paper fills charge Kalshi's taker fee (rounded up to the cent, per order) and walk the real orderbook, so entry prices include slippage. Edge and break-even win rate are computed after fees. Paper portfolios can accrue Kalshi's interest (APY on cash and open positions, accrued daily), so a strategy has to beat simply holding cash to look good.
 - **Idempotent orders.** Order IDs are deterministic, so a retry can never double-fill.
-- **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed. Risk limits use `null` for "disabled", never `0`.
+- **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed when its data is missing or stale; a gate that crashes (a bug) always blocks the trade. Risk limits use `null` for "disabled", never `0`.
 - **Secrets only from environment variables.** Nothing secret is ever in a config file or a commit; [gitleaks](https://github.com/gitleaks/gitleaks) runs on every commit and in CI.
 
 ## Roadmap

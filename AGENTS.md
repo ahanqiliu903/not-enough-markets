@@ -94,6 +94,8 @@ If the rules can't be fetched or are ambiguous, stop and ask; don't guess.
   `max_entry_price` must stay independent of the model.
 - **Risk limits:** `null` means disabled; `0` is rejected on purpose. Risk checks fail
   closed. Choose each gate's `fail_open` deliberately and tell the user what you chose.
+  `fail_open` covers missing or stale data (`DataUnavailable`) only; any other exception
+  in a gate is a bug and always blocks the trade.
 - **Kelly sizing** always needs `max_contracts`.
 - **Don't overfit.** If you suggest settings from recorded data, use few parameters, check
   them on a later period they weren't tuned on, prefer the middle of a stable region over
@@ -179,7 +181,8 @@ Then add the module to `BUILTIN_MODULES` in `src/nem/builtins.py` and write test
 - **Signals** return a `Signal` via `ctx.make_signal(...)` or `None`. Read past results
   with `ctx.stat(...)` / `ctx.settled_trades()`, and feeds with `ctx.feed(name)`.
 - **Gates** that need data raise `DataUnavailable` when it's missing or stale; the gate's
-  `fail_open` decides. Declare feeds in `feeds_used()` so startup can check them.
+  `fail_open` decides. Raise nothing else on purpose: any other exception always blocks
+  (logged as `<gate>:error:<ExceptionType>`). Declare feeds in `feeds_used()` so startup can check them.
 - **Sizers** return `Sizing(qty, reason)`. The reason is logged with every trade.
 - **Feeds** return `(key, value, known_at)` where `known_at` is when the value became
   knowable (publish or issue time), never later than `now`.
