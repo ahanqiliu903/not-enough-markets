@@ -148,7 +148,7 @@ export function provisionalClass(status: string | null): string {
 }
 
 /**
- * Pending P&L of one kind with its count, e.g. "+$4.39 (6)"; NA when not computed (null).
+ * Pending P&L of one kind with its count, e.g. "+$3.20 (4)"; NA when not computed (null).
  */
 export function pendingPnl(pnl: number | null | undefined, n: number | null | undefined): string {
   if (!finite(pnl) || !finite(n)) return NA;
@@ -156,7 +156,7 @@ export function pendingPnl(pnl: number | null | undefined, n: number | null | un
 }
 
 /**
- * A row's pending results in one cell, e.g. "locked +$0.92 (1); likely +$4.39 (6); 1 conflict";
+ * A row's pending results in one cell, e.g. "locked +$1.98 (1); likely +$3.20 (4); 1 conflict";
  * "" when nothing is pending, NA when not computed.
  */
 export function pendingSummary(r: {
