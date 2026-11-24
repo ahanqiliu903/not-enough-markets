@@ -7,13 +7,21 @@ what each gate, sizer and risk limit actually did.
 import logging
 
 from nem.core.context import Context, DataUnavailable
-from nem.core.types import Decision, DecisionKind, MarketSnapshot, Order, Signal, Trade
+from nem.core.types import Decision, DecisionKind, Fill, MarketSnapshot, Order, Signal, Trade
 from nem.engine.risk import check_risk
 from nem.engine.runtime import StrategyRuntime
 from nem.gates.base import Gate
 from nem.store import Store
 
 log = logging.getLogger(__name__)
+
+COST_EPS = 1e-9  # float noise, in dollars
+
+
+def fill_cost(fill: Fill) -> float:
+    """Cash a fill takes, computed exactly as `Trade.cost` will be: contracts at the
+    average price, plus fees."""
+    return fill.price * fill.qty + fill.fee
 
 
 def check_gate(gate: Gate, signal: Signal, snap: MarketSnapshot, ctx: Context) -> Decision:
@@ -66,20 +74,33 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         _log(rt, store, sig, ctx, "skip", f"size_zero: {sizing.reason}")
         return None
 
-    est_cost = sizing.qty * sig.limit_price
-    d = check_risk(ctx, est_cost, sig.ticker)
+    # Risk sees what the order would actually cost, fees included: the broker's quote walks
+    # the same levels with the same per-level fee rounding as the fill itself.
+    now = ctx.now()
+    attempt = store.order_attempts(rt.key, sig.window_id, sig.side)
+    order = Order.from_signal(sig, sizing.qty, attempt=attempt)
+    quote = rt.broker.quote(order, snap, now)
+    approved = fill_cost(quote) if quote is not None else 0.0  # nothing fills, nothing spent
+    d = check_risk(ctx, approved, sig.ticker)
     if not d.take:
         _log(rt, store, sig, ctx, "skip", d.reason)
         return None
 
-    now = ctx.now()
-    attempt = store.order_attempts(rt.key, sig.window_id, sig.side)
-    order = Order.from_signal(sig, sizing.qty, attempt=attempt)
     store.record_order(order, now, rt.broker.mode, "submitted")
     fill = rt.broker.submit(order, snap, now)
     if fill is None:
         store.set_order_status(order.client_order_id, "no_fill")
         _log(rt, store, sig, ctx, "no_fill", "no_liquidity_at_limit")
+        return None
+    if fill_cost(fill) > approved + COST_EPS:
+        # Can't happen with the paper broker (the quote is exact); never book more than
+        # risk approved if it ever does.
+        log.error(
+            "%s/%s fill cost %.6f above approved %.6f; not booked",
+            *rt.key, fill_cost(fill), approved,
+        )  # fmt: skip
+        store.set_order_status(order.client_order_id, "rejected_over_risk")
+        _log(rt, store, sig, ctx, "skip", "risk:fill_above_approved_cost")
         return None
 
     store.record_fill(fill)

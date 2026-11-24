@@ -7,6 +7,10 @@ cap; here it's structurally impossible and asserted).
 
 If a snapshot has no depth, the order fills in full at the top-of-book ask. That ignores
 liquidity, so record with depth for realistic results.
+
+`quote` returns the fill `submit` would make, without placing anything. A paper fill is a
+pure function of the order and the snapshot, so the quote is exact (same levels, same
+per-level fee rounding); the engine checks risk against the quote's cost, fees included.
 """
 
 import math
@@ -34,6 +38,10 @@ class PaperBroker:
 
     def __init__(self, taker_fee_rate: float) -> None:
         self.taker_fee_rate = taker_fee_rate
+
+    def quote(self, order: Order, snap: MarketSnapshot, ts: datetime) -> Fill | None:
+        """The fill `submit` would make now. Side-effect free."""
+        return self.submit(order, snap, ts)
 
     def submit(self, order: Order, snap: MarketSnapshot, ts: datetime) -> Fill | None:
         takeable = [(p, q) for p, q in _asks(order, snap) if p <= order.limit_price + EPS]
