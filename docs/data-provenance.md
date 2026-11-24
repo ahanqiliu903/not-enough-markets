@@ -394,22 +394,28 @@ row means complete) and `trade_prints` (every archived print) are created by
 
 **How it replays** (`nem history`, `HistorySource`): one tick per minute with every open
 market's latest quote, markets chosen by market date so a train and a test period never
-share a market. Entries fill in full at the minute's ask (no depth: size is unknown, so cap
-contracts with `fixed` sizing). Stops sell at the minute's bid. Take-profit: `pessimistic`
-never fills at 99c, `realistic` / `optimistic` read resting bids (here only the top of
-book), `trade_through` counts prints (upper bound, see docs/exits-and-fills.md). Fees must be
+share a market. The archive has no depth, and by default nothing fills without recorded
+depth, so every portfolio replayed here runs with `fills.missing_depth: quote`, set by
+`nem history` itself (`nem.history.backtest.quote_fills`): entries fill in full at the
+minute's ask (size is unknown, so cap contracts with `fixed` sizing), stops sell at the
+minute's bid. Take-profit: `pessimistic` never fills at 99c, `realistic` / `optimistic`
+read the top-of-book bid as if it covered the position, `trade_through` counts prints
+(upper bound). See docs/exits-and-fills.md (Fill assumptions). Fees must be
 set in the portfolio file (`taker_fee_rate`, `maker_fee_rate`): nothing is looked up.
 A market's latest quote is carried forward to every minute until the next candle and
 stamped with that minute, so it passes the engine's `max_snapshot_age` check: replay
 assumes the last known quote still stands, which a quiet market may not honor.
 
-**Reporting.** Every result is labeled "historical candles, no depth" (and "backfilled
-forecasts" when a forecast gate reads backfill) and every verdict goes through
+**Reporting.** Every result is labeled "historical candles, no depth" and "quote fills:
+no depth, full size assumed at top of book" (and "backfilled forecasts" when a forecast
+gate reads backfill) and every verdict goes through
 `cap_verdict`: a backtest here can reject an idea, never confirm it. Statistics are per
 trade (the engine trades at most one market per strategy per event) and per market date
 (cities on one date share the weather and are not independent).
 
-**Limits.** No depth and no queue: entry size and stop proceeds are optimistic for size.
+**Limits.** No depth and no queue: entry size and stop proceeds are optimistic for size,
+and quote fills are not shared between strategies of a portfolio (there is no recorded
+size to take), so results here never equal a depth-backed replay.
 A candle's close is one instant per minute; quotes inside the minute are not seen. Kalshi's
 archived result is taken as given (check with `nem settle verify`). Series created
 mid-period (e.g. a city added in February) simply have fewer markets.

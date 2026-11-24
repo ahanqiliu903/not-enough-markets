@@ -79,7 +79,8 @@ def build_strategies(
                 missing = sorted(set(plugin.feeds_used()) - feed_names)
                 if missing:
                     raise BuildError(_where(p, s, f"{plugin.name} uses undeclared feeds {missing}"))
-            out.append(StrategyRuntime(p, s, signal, gates, sizer, PaperBroker(s.taker_rate)))
+            broker = PaperBroker(s.taker_rate, p.fills.missing_depth)
+            out.append(StrategyRuntime(p, s, signal, gates, sizer, broker))
     return out
 
 

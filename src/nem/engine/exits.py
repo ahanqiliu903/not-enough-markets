@@ -79,7 +79,8 @@ def run_exits(
         snap = books.get(trade.ticker)
         if snap is None or snap.window_id != trade.window_id:
             continue
-        fill = decide_exit(trade, cfg, snap, rt.config.taker_rate, traded)
+        missing = rt.portfolio.fills.missing_depth
+        fill = decide_exit(trade, cfg, snap, rt.config.taker_rate, traded, missing)
         if fill is None:
             continue
         assert fill.qty == trade.qty, "exits are all-or-nothing"

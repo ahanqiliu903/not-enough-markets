@@ -112,7 +112,7 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
     fill = rt.broker.submit(order, snap, now)
     if fill is None:
         store.set_order_status(order.client_order_id, "no_fill")
-        _log(rt, store, sig, ctx, "no_fill", "no_liquidity_at_limit")
+        _log(rt, store, sig, ctx, "no_fill", rt.broker.no_fill_reason(order, snap))
         return None
     if fill_cost(fill) > approved + COST_EPS:
         # Can't happen with the paper broker (the quote is exact); never book more than

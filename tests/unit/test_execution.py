@@ -73,9 +73,52 @@ def test_fractional_sizes_round_down_to_whole_contracts() -> None:
     assert fill.qty == 2
 
 
-def test_without_depth_fills_at_top_of_book() -> None:
+# Audit R2 (intentional change): a quote is a price, not a size. Without recorded depth
+# nothing fills unless the portfolio opts in to `fills.missing_depth: quote`.
+
+
+@pytest.mark.parametrize(
+    ("depth", "reason"),
+    [
+        ({}, "no_depth_recorded"),  # top of book only
+        ({"yes": [(0.88, 500.0)]}, "no_depth_recorded"),  # opposite (NO) side not recorded
+        ({"yes": [(0.88, 500.0)], "no": []}, "book_empty"),  # NO side recorded empty
+    ],
+)
+def test_without_depth_nothing_fills_by_default(depth: dict[str, object], reason: str) -> None:
+    snap = make_snapshot(yes_ask=0.90, depth=depth)
+    broker = PaperBroker(0.07)
+    o = order(qty=1_000_000)
+    assert broker.submit(o, snap, T0) is None
+    assert broker.no_fill_reason(o, snap) == reason
+
+
+def test_quote_mode_fills_at_top_of_book_without_depth() -> None:
     snap = make_snapshot(yes_ask=0.90)
-    fill = PaperBroker(0.07).submit(order(qty=7), snap, T0)
+    fill = PaperBroker(0.07, "quote").submit(order(qty=7), snap, T0)
     assert fill is not None
     assert (fill.qty, fill.price) == (7, 0.90)
-    assert PaperBroker(0.07).submit(order(qty=7), make_snapshot(yes_ask=None), T0) is None
+    assert PaperBroker(0.07, "quote").submit(order(qty=7), make_snapshot(yes_ask=None), T0) is None
+    assert PaperBroker(0.07, "quote").no_fill_reason(order(), make_snapshot(yes_ask=None)) == (
+        "no_quote"
+    )
+    above = order(qty=7, limit=0.89)
+    assert PaperBroker(0.07, "quote").submit(above, snap, T0) is None
+
+
+def test_quote_mode_never_fills_a_verified_empty_book() -> None:
+    snap = make_snapshot(yes_ask=0.90, depth={"yes": [(0.88, 5.0)], "no": []})
+    assert PaperBroker(0.07, "quote").submit(order(qty=7), snap, T0) is None
+
+
+def test_depth_wins_over_quote_in_quote_mode() -> None:
+    # recorded depth bounds the fill even when quotes are allowed
+    snap = make_snapshot(yes_ask=0.90, depth={"yes": [], "no": [(0.10, 3.0)]})
+    fill = PaperBroker(0.07, "quote").submit(order(qty=7), snap, T0)
+    assert fill is not None and (fill.qty, fill.price) == (3, 0.90)
+
+
+def test_limit_is_enforced_on_unsorted_depth() -> None:
+    snap = snap_with_no_bids((0.07, 100), (0.10, 2))  # worst level listed first
+    fill = PaperBroker(0.07).submit(order(qty=5, limit=0.92), snap, T0)
+    assert fill is not None and (fill.qty, fill.price) == (2, 0.90)

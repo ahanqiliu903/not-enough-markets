@@ -163,6 +163,7 @@ interest_apy: 0.0325             # Kalshi's current rate; it changes, so check i
 check_every: 5s                  # default for every strategy below
 max_snapshot_age: 2m             # never enter on a market snapshot older than this (default 2m)
 risk: {daily_loss_cap: null, max_open_positions: 3}   # null = disabled
+fills: {missing_depth: none}     # no recorded depth = no fill (default); see docs/exits-and-fills.md
 
 feeds:
   - {name: btc_spot, type: coinbase_spot, product: BTC-USD, every: 5s, max_age: 30s}
@@ -326,7 +327,7 @@ A desktop app (macOS, Windows) for looking at what the engine exports. It's read
 - **Same code for backtest, paper and live.** Only the data sources (market and feeds) and the broker change, so a strategy can't behave differently in replay than it does live.
 - **No look-ahead.** Signals and gates only see results that settled, and feed values that were published, *before* the current time. This is enforced in one place and tested.
 - **Every signal is logged with a reason**, including the ones that were skipped, so you can measure what each gate actually did.
-- **Kalshi's fees and interest are part of every number.** Paper fills charge Kalshi's taker fee (rounded up to the cent, per order) and walk the real orderbook, so entry prices include slippage. Edge and break-even win rate are computed after fees. Paper portfolios can accrue Kalshi's interest (APY on cash and open positions, accrued daily), so a strategy has to beat simply holding cash to look good.
+- **Kalshi's fees and interest are part of every number.** Paper fills charge Kalshi's taker fee (rounded up to the cent, per order) and walk the real orderbook, so entry prices include slippage. A quote without recorded depth is a price, not a size: nothing fills against it unless a portfolio opts in (`fills.missing_depth: quote`), and those results are labelled. Edge and break-even win rate are computed after fees. Paper portfolios can accrue Kalshi's interest (APY on cash and open positions, accrued daily), so a strategy has to beat simply holding cash to look good.
 - **Idempotent orders.** Order IDs are deterministic, so a retry can never double-fill.
 - **Fail safe.** Risk checks fail closed. Each gate declares whether it fails open or closed when its data is missing or stale; a gate that crashes (a bug) always blocks the trade. Risk limits use `null` for "disabled", never `0`.
 - **Secrets only from environment variables.** Nothing secret is ever in a config file or a commit; [gitleaks](https://github.com/gitleaks/gitleaks) runs on every commit and in CI.

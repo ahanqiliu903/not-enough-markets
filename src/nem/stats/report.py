@@ -15,7 +15,13 @@ from nem.execution.mark import Mark, mark_position
 from nem.stats.exits import ExitBreakdown, ExitLabel, by_exit_kind
 from nem.stats.held import HeldToSettlement, held_to_settlement
 from nem.stats.metrics import Interval, StrategyStats, cost_per_contract, strategy_stats, wilson
-from nem.stats.provenance import cap_verdict, label, uses_backfill
+from nem.stats.provenance import (
+    QUOTE_FILLS_LABEL,
+    cap_verdict,
+    label,
+    uses_backfill,
+    uses_quote_fills,
+)
 from nem.store import Store
 
 Cell = str | int | float | None
@@ -558,6 +564,7 @@ def render_text(report: PortfolioReport) -> str:
         return _render_strategies(report, _manual_header(p.name, report.manual))
     lines = [
         f"Portfolio {p.name} ({p.mode})",
+        *([f"  [{QUOTE_FILLS_LABEL}]"] if uses_quote_fills(p) else []),
         f"  equity ${report.equity:,.2f}  ({_pct(report.total_return, 2)} on ${report.start:,.2f})"
         f"  realized {report.realized:+,.2f}  interest {report.interest:+,.2f}",
         f"  open positions {report.open_positions} (${report.open_cost:,.2f} at cost)",

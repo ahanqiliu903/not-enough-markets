@@ -153,9 +153,14 @@ def test_optimistic_does_not_fill_while_others_offer_below() -> None:
     assert exit_kind(store, only_trade(store)) == "settlement"
 
 
-def test_top_of_book_only_counts_as_enough_size() -> None:
+def test_top_of_book_only_counts_as_enough_size_only_in_quote_mode() -> None:
+    # Audit R2 (intentional change): a bid is a price, not a size; only the opt-in
+    # `fills.missing_depth: quote` assumes it covers the position.
     s = replace(LADDER[2], depth={})
-    assert side_bids(s, "yes", 7) == [(0.95, 7.0)]
+    assert side_bids(s, "yes", 7) == []
+    assert side_bids(s, "yes", 7, "quote") == [(0.95, 7.0)]
+    recorded_empty = replace(LADDER[2], depth={"yes": [], "no": [(0.04, 9.0)]})
+    assert side_bids(recorded_empty, "yes", 7, "quote") == []
 
 
 # --- stop ------------------------------------------------------------------------------

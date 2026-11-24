@@ -28,7 +28,7 @@ from pydantic import (
     model_validator,
 )
 
-from nem.core.types import Mode
+from nem.core.types import MissingDepth, Mode
 from nem.execution.fees import DEFAULT_TAKER_RATE
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
@@ -194,6 +194,14 @@ class ExitConfig(_Strict):
         return self.take_profit is None and self.stop is None
 
 
+class FillsConfig(_Strict):
+    """Paper fill assumptions for every strategy of the portfolio (docs/exits-and-fills.md)."""
+
+    # When the book side an order or exit trades against was not recorded: "none" (no
+    # fill) or "quote" (the quote covers the whole order; results are labelled).
+    missing_depth: MissingDepth = "none"
+
+
 class StrategyConfig(_Strict):
     name: str = Field(pattern=NAME_PATTERN)
     status: Literal["active", "paused", "retired"] = "active"  # retired keeps its history
@@ -232,6 +240,7 @@ class PortfolioConfig(_Strict):
     # the age is normally ~0; this catches a stalled source or mis-stamped data.
     max_snapshot_age: Duration = timedelta(minutes=2)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    fills: FillsConfig = Field(default_factory=FillsConfig)
     feeds: list[FeedSpec] = Field(default_factory=list[FeedSpec])
     strategies: list[StrategyConfig] = Field(default_factory=list[StrategyConfig])
     reporting: list[PluginSpec] = Field(default_factory=list[PluginSpec])

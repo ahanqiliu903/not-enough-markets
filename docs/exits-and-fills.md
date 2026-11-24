@@ -29,6 +29,43 @@ paper orders are never in the recorded book. Every fill rule below is an inferen
 resting bids at poll times. Prices are for the held side: holding NO, "bid" is the NO bid
 and "ask" is 1 minus the best YES bid.
 
+## Fill assumptions (entries and exits)
+
+Code: `src/nem/execution/paper_broker.py` (entries), `src/nem/execution/exits.py` (exits).
+
+- **Only recorded depth is liquidity.** An entry buying YES at limit L lifts recorded NO
+  bids (asks at 1 - bid) best first up to L, immediate-or-cancel: a partial fill is
+  bounded by the recorded size and the limit, the rest is cancelled. Exits sell into the
+  recorded bids of the held side.
+- **A quote is a price, not a size.** Each book side is one of three states:
+  - *recorded with levels*: fills walk them, bounded by their sizes;
+  - *recorded empty* (the orderbook was fetched and the side had no bids): nothing to
+    trade against, so no fill, in every mode;
+  - *not recorded* (top of book only: `nem run --depth 0`, a failed orderbook fetch,
+    Kalshi's historical candles): the size is unknown. By default nothing fills.
+- **`fills.missing_depth`** (portfolio file, default `none`):
+
+  ```yaml
+  fills:
+    missing_depth: none   # none: no recorded depth, no fill | quote: see below
+  ```
+
+  `quote` is an explicit assumption for quote-only data: a side that was not recorded is
+  assumed to cover the whole order at its top-of-book quote (entries at the ask, stops and
+  `realistic` / `pessimistic` take-profits at the bid, `optimistic` also at the ask). It
+  invents size, so its results are labelled `[quote fills: no depth, full size assumed at
+  top of book]` in `nem summary`, `nem replay`, `nem suggest` and every `nem history`
+  result, and must never be read as depth-backed. It does not apply to a side recorded
+  empty, and recorded depth always wins over the quote. `nem history` sets it for every
+  portfolio it replays (the archive has no depth, docs/data-provenance.md).
+- **Why no fill.** An entry that doesn't fill is logged (`nem summary` reasons, the
+  `signals` table) as `no_depth_recorded` (side not recorded, default mode), `book_empty`
+  (recorded empty), `no_liquidity_at_limit` (depth, but none at or under the limit) or
+  `no_quote` (quote mode, and no ask either).
+- Quote fills have no recorded size, so nothing bounds them but the order itself.
+- Mark-to-market follows the same states: no recorded depth leaves a trade unmarked,
+  recorded empty bids value it at $0 (below). It never uses `fills.missing_depth`.
+
 ## When exits run
 
 - Every tick, on that tick's snapshots only (book time <= now), for active, paused and
@@ -37,8 +74,9 @@ and "ask" is 1 minus the best YES bid.
 - Only while the market is open; after close, settlement decides.
 - All-or-nothing: the whole position leaves in one fill, or nothing fills this poll and
   the exit tries again next poll. Partial exits are not modelled.
-- With no recorded depth, the top-of-book bid is assumed to cover the whole position (the
-  entry broker makes the same assumption for the ask). Record with depth.
+- Only recorded bids count (Fill assumptions above). A bid side that wasn't recorded
+  fills only under `fills.missing_depth: quote`, where the top-of-book bid is assumed to
+  cover the whole position. Record with depth.
 
 ## Take-profit fill models
 
@@ -84,7 +122,8 @@ depends on fills the data can't confirm.
 
 Once the best bid is at or below `bid_at_or_below`, sell at market: walk the recorded bids
 best first, taker fee per level (`taker_fee_rate` of the strategy). If the bids can't absorb
-the whole position, or there are no bids, nothing fills and the stop retries next poll.
+the whole position, or there are no bids (recorded empty, or not recorded without
+`fills.missing_depth: quote`), nothing fills and the stop retries next poll.
 The take-profit is checked before the stop on the same poll.
 
 ## How exits are recorded

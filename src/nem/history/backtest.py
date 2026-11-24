@@ -13,6 +13,8 @@
 
 Every verdict here goes through `cap_verdict` and every result is labeled: a backtest on
 archived quotes without depth and backfilled forecasts can reject an idea, not confirm it.
+The archive has no depth, so every replay here fills at the quote (`quote_fills`: the
+portfolio's `fills.missing_depth` is set to `quote`) and is labeled so.
 """
 
 import math
@@ -34,7 +36,12 @@ from nem.history.db import LABEL, HistoryDb
 from nem.history.source import HistorySource
 from nem.stats.exits import ExitLabel, exit_kind
 from nem.stats.metrics import Interval, StrategyStats, strategy_stats
-from nem.stats.provenance import BACKFILL_LABEL, cap_verdict, uses_backfill
+from nem.stats.provenance import (
+    BACKFILL_LABEL,
+    QUOTE_FILLS_LABEL,
+    cap_verdict,
+    uses_backfill,
+)
 from nem.store import Store
 
 # Kalshi settles daily weather markets the morning after; a week covers late revisions.
@@ -43,8 +50,17 @@ SETTLE_GRACE = timedelta(days=7)
 
 def labels(portfolios: Iterable[PortfolioConfig]) -> str:
     backfill = any(uses_backfill(s) for p in portfolios for s in p.strategies)
-    parts = ([BACKFILL_LABEL] if backfill else []) + [LABEL]
+    parts = ([BACKFILL_LABEL] if backfill else []) + [LABEL, QUOTE_FILLS_LABEL]
     return " ".join(f"[{x}]" for x in parts)
+
+
+def quote_fills(portfolio: PortfolioConfig) -> PortfolioConfig:
+    """`portfolio` with `fills.missing_depth: quote`. Historical candles record no depth, so
+    nothing would fill otherwise; the assumption is explicit and in every label here."""
+    if portfolio.fills.missing_depth == "quote":
+        return portfolio
+    fills = portfolio.fills.model_copy(update={"missing_depth": "quote"})
+    return portfolio.model_copy(update={"fills": fills})
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +89,8 @@ def replay(
     if not markets:
         raise SweepError(f"no imported markets for {series} in {period.start}..{period.end}")
     clock = ManualClock(min(m.open_time for m in markets))
-    runner = Runner(portfolios, source, results, clock, data=db.store, fetch_feeds=False)
+    quoted = [quote_fills(p) for p in portfolios]
+    runner = Runner(quoted, source, results, clock, data=db.store, fetch_feeds=False)
     runner.run(source.ticks(runner.series))
     runner.settle_remaining(max(m.close_time for m in markets) + SETTLE_GRACE)
 
