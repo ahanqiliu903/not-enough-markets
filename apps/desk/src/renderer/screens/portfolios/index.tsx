@@ -3,7 +3,7 @@ import type { PortfolioData, Snapshot } from "@shared/data";
 import { PixelIcon } from "../../components/PixelIcon";
 import { EmptyState } from "../../components/states";
 import { useCompare } from "../../data/compare";
-import { int, pct, signClass, signedUsd, ts, usd } from "../../data/format";
+import { EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, pct, signClass, signedUsd, ts, unrealized, usd } from "../../data/format";
 import { allStrategies, errorsForFile } from "../../data/hooks";
 import { DataErrors, DATA_COMMANDS, SourceGate } from "../../data/states";
 import { StrategyBadge } from "../../data/StrategyBadge";
@@ -23,9 +23,9 @@ export default function PortfoliosScreen() {
   );
 }
 
-function Stat({ label, value, className = "" }: { label: string; value: string; className?: string }) {
+function Stat({ label, value, className = "", title }: { label: string; value: string; className?: string; title?: string }) {
   return (
-    <div className="stat">
+    <div className="stat" title={title}>
       <span className="stat-label">{label}</span>
       <span className={`stat-value num ${className}`}>{value}</span>
     </div>
@@ -135,6 +135,25 @@ function PortfolioCard({
             className={signClass(s.pnl_vs_cash_usd)}
           />
           <Stat label="Open positions" value={`${int(s.open_positions)} (${usd(s.open_cost_usd)})`} />
+          <Stat label="Open value" value={usd(s.open_value_usd)} title={`Open positions at ${MARK_LABEL} (engine marks)`} />
+          <Stat
+            label="Unrealized P&L"
+            value={unrealized(s.unrealized_pnl_usd, s.open_unmarked)}
+            className={signClass(s.unrealized_pnl_usd)}
+            title={`${MARK_LABEL}, minus entry cost; contracts without bids count at $0; unmarked open trades (stale book, closed market) are left out`}
+          />
+          <Stat
+            label="No bids"
+            value={noBidContracts(s.open_no_bid_contracts)}
+            className={s.open_no_bid_contracts ? "down" : ""}
+            title="Open contracts nobody bids on, valued at $0 in open value (engine marks)"
+          />
+          <Stat
+            label="Excluded trades"
+            value={excludedCount(s.excluded_trades)}
+            className={s.excluded_trades ? "excluded-count" : ""}
+            title={`Trades ${EXCLUDED_NOTE}`}
+          />
           <Stat label="Starting balance" value={usd(s.starting_balance_usd)} />
         </div>
       ) : (
@@ -157,12 +176,13 @@ function PortfolioCard({
                 <th>Strategy</th>
                 <th>Series</th>
                 <th>Status</th>
-                <th className="num">Trades</th>
+                <th className="num" title={`Settled trades counted in the statistics; "+N excl." are ${EXCLUDED_NOTE}`}>Trades</th>
                 <th className="num">Open</th>
                 <th className="num">Win rate</th>
                 <th className="num">Break-even</th>
                 <th className="num">Edge</th>
                 <th className="num">P&L</th>
+                <th className="num" title={`Open positions at ${MARK_LABEL}, minus entry cost`}>Unrealized</th>
                 <th>Compare</th>
               </tr>
             </thead>
@@ -186,12 +206,16 @@ function PortfolioCard({
                     <td>{r.strategy}</td>
                     <td>{r.series}</td>
                     <td className={r.status === "active" ? "" : "dim"}>{r.status}</td>
-                    <td className="num">{int(r.trades)}</td>
+                    <td className="num">
+                      {int(r.trades)}
+                      {r.excluded_trades ? <span className="dim"> (+{int(r.excluded_trades)} excl.)</span> : null}
+                    </td>
                     <td className="num">{int(r.open)}</td>
                     <td className="num">{pct(r.win_rate)}</td>
                     <td className="num">{pct(r.break_even_rate)}</td>
                     <td className={`num ${signClass(r.edge_cents)}`}>{r.edge_cents === null ? "-" : `${r.edge_cents.toFixed(2)}c`}</td>
                     <td className={`num ${signClass(r.pnl_usd)}`}>{signedUsd(r.pnl_usd)}</td>
+                    <td className={`num ${signClass(r.unrealized_pnl_usd)}`}>{r.open === 0 ? "-" : unrealized(r.unrealized_pnl_usd, r.open_unmarked, r.open_no_bid_contracts)}</td>
                     <td className="dim">{compareIds.includes(id) ? "picked" : ""}</td>
                   </tr>
                 );

@@ -99,8 +99,9 @@ If the rules can't be fetched or are ambiguous, stop and ask; don't guess.
   them on a later period they weren't tuned on, prefer the middle of a stable region over
   the single best point, and state the sample size.
 - **Respect data sources.** Keep `check_every` and feed `every` reasonable (seconds for
-  15-minute crypto, minutes for daily weather; NWS `every: 30m`). Put a real contact in
-  `nws_forecast`'s `user_agent`.
+  15-minute crypto, minutes for daily weather; NWS and model feeds `every: 30m`). Weather
+  feeds send a contact User-Agent from the `NEM_USER_AGENT` env var (or a feed's
+  `user_agent`); never hardcode one.
 - **Never edit tests to make them pass**, never weaken type checking, and only commit when
   the user asks.
 
@@ -119,6 +120,9 @@ uv run nem run --once         # one live paper tick (smoke test)
 uv run nem run                # paper-trade continuously (records data too)
 uv run nem suggest PORTFOLIO STRATEGY --data data/nem.db --grid signal.threshold=0.88,0.9,0.92
 uv run nem summary            # statistics per strategy
+uv run nem trade exclude TICKER --reason "..."   # treat a trade as never taken (stats and money)
+uv run nem trade include TICKER / uv run nem trade list --excluded
+uv run nem import kalshi-pnl data/private/realized_pnl_*.csv   # your own manual trades, read-only
 uv run nem status             # process health, halts
 uv run nem halt SCOPE --reason "..." / uv run nem resume SCOPE
 uv run nem help [COMMAND]     # every command and option, generated from the CLI itself

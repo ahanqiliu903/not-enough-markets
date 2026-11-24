@@ -13,10 +13,10 @@ bundled sample data and recorded Kalshi responses) are in [docs/screenshots/](do
 
 | Key | Screen | What it shows |
 |---|---|---|
-| Cmd/Ctrl+1 | Portfolios | A card per portfolio (equity, P&L vs holding cash, open positions), strategy rows with verdict badges; hover a badge for its lore card |
+| Cmd/Ctrl+1 | Portfolios | A card per portfolio (equity, P&L vs holding cash, open positions, open value and unrealized P&L), strategy rows with verdict badges; hover a badge for its lore card |
 | Cmd/Ctrl+2 | Strategy | Tier badge, win-rate and edge intervals vs break-even, SPRT progress, P&L curve and drawdown, calibration, signal reasons |
 | Cmd/Ctrl+3 | Compare | 2 to 4 strategies (retired included): P&L curves from a common start, stats, verdicts |
-| Cmd/Ctrl+4 | Trades | Virtualized blotter: sort, filter, CSV export (100k rows smooth) |
+| Cmd/Ctrl+4 | Trades | Virtualized blotter: sort, filter, CSV export (100k rows smooth); each open trade's mark (unrealized P&L, mark value, bid, mid; "no bids" flag when contracts are valued at $0); trades excluded from statistics muted with their reason, "Hide excluded" toggle |
 | Cmd/Ctrl+5 | Market | Recorded markets from a snapshot DB: top of book, depth, feed overlay at `known_at` |
 | Cmd/Ctrl+6 | Backtests | Run list, sweep heatmap (chosen cell, `n` per cell), train vs held-out test, backtest vs paper (hidden until a source has backtests) |
 | Cmd/Ctrl+7 | Feeds and Status | Engine health, heartbeats, halts, per-strategy activity |
@@ -315,7 +315,20 @@ folder (`sources.json`); source folders are only read.
   `contract/schema/*.json`; any other `schema_version` major, a missing column, an invalid
   row or duplicate rows block that file, and the problem comes back as a `DataError`
   (file, row, field, message, expected/found version) that screens show with
-  `<SchemaError>`. Nothing is thrown to the renderer.
+  `<SchemaError>`. Nothing is thrown to the renderer. A column whose schema property has
+  `x-since` (added in a contract minor, e.g. 1.1's mark-to-market columns) is not required
+  of an older file: absent, it reads as null.
+- **Marks** (contract 1.1): open value, unrealized P&L and per-trade marks are the
+  engine's (liquidation value at the recorded best bids, after the exit fee; contracts the
+  bids don't cover count at $0; see `docs/exits-and-fills.md`). The desk displays them with
+  that label and never derives a mark from prices; `-` means the engine left it empty
+  (settled, stale book, closed market). A trade with `mark_contracts` < `contracts` is
+  flagged "no bids: N at $0 (pending loss)"; Portfolios and Strategy show
+  `open_no_bid_contracts`.
+- **Excluded trades** (contract 1.1, `nem trade exclude`): the Trades screen mutes them with
+  the engine's "excluded: <reason>" flag (the trade's own money columns still shown) and can
+  hide them; Portfolios and Strategy show `excluded_trades`. The engine already left them
+  out of every statistic and money total; the desk never recomputes anything.
 - **Trades** stay in main: `data:trades` filters, sorts and pages them (the sorted index is
   cached, so scrolling is a slice); `data:tradesCsv` returns the matching rows with the
   engine's own cell text for export; `data:curves` gives cumulative P&L for charts.
@@ -333,7 +346,7 @@ folder (`sources.json`); source folders are only read.
   `-wal`/`-shm` files, nothing written, and WAL-mode snapshots open even in read-only folders.
   That is safe because sources are snapshot files replaced by rename (rsync,
   `deploy/snapshot.sh`); a changed inode/size/mtime reopens. A file with a `-wal`/`-journal`
-  beside it is a live DB and is refused. `PRAGMA user_version` must be 3. Queries are limited
+  beside it is a live DB and is refused. `PRAGMA user_version` must be 3 to 8. Queries are limited
   (500 markets per page, 5,000 snapshots per market, 20,000 feed values). Errors are values
   (`no_db`, `missing_file`, `live_db`, `locked`, `not_sqlite`, `schema_version`, `query`).
 - **Which DB**: a source's attached file (Settings, "Attach DB..."), else `nem.db` or

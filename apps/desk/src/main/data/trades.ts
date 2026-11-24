@@ -45,6 +45,7 @@ export function filterTrades(source: LoadedSource, f: TradesFilter): { refs: Tra
       if (r === undefined) continue;
       if (f.strategy !== undefined && r.strategy !== f.strategy) continue;
       if (f.result !== undefined && r.result !== f.result) continue;
+      if (f.hideExcluded === true && r.excluded === true) continue;
       if (
         text !== "" &&
         !r.ticker.toLowerCase().includes(text) &&
@@ -82,7 +83,7 @@ export class TradeIndex {
   private errors: DataError[] = [];
 
   query(source: LoadedSource, revision: number, q: Omit<TradesQuery, "offset" | "limit">): { refs: TradeRef[]; errors: DataError[] } {
-    const key = JSON.stringify([revision, q.portfolio, q.strategy, q.result, q.text, q.sort?.column, q.sort?.dir]);
+    const key = JSON.stringify([revision, q.portfolio, q.strategy, q.result, q.text, q.hideExcluded, q.sort?.column, q.sort?.dir]);
     if (key !== this.key) {
       const f = filterTrades(source, q);
       this.refs = q.sort !== undefined ? sortTrades(f.refs, q.sort.column, q.sort.dir) : f.refs;

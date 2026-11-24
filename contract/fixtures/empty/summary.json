@@ -18,7 +18,12 @@
         "open_cost_usd": 0,
         "interest_apy": 0.04,
         "cash_benchmark_usd": null,
-        "pnl_vs_cash_usd": null
+        "pnl_vs_cash_usd": null,
+        "open_value_usd": 0.0,
+        "unrealized_pnl_usd": 0.0,
+        "open_unmarked": 0,
+        "open_no_bid_contracts": 0,
+        "excluded_trades": 0
       },
       "strategies": []
     }

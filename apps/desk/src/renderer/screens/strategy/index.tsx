@@ -4,7 +4,7 @@ import { PixelIcon } from "../../components/PixelIcon";
 import { EmptyState } from "../../components/states";
 import { CalibrationChart, IntervalChart, LineChart, ProgressBar } from "../../data/charts";
 import { useCompare } from "../../data/compare";
-import { cents, int, num, pct, range, signClass, signedUsd, usd } from "../../data/format";
+import { cents, EXCLUDED_NOTE, excludedCount, int, MARK_LABEL, noBidContracts, num, pct, range, signClass, signedUsd, unrealized, usd } from "../../data/format";
 import { allStrategies, findStrategy, useCurves } from "../../data/hooks";
 import { drawdownSeries } from "../../data/series";
 import { DataErrors, SourceGate } from "../../data/states";
@@ -183,8 +183,27 @@ function Detail({
               <tr><td className="dim">ROI</td><td className="num">{pct(r.roi)}</td></tr>
               <tr><td className="dim">Max drawdown</td><td className="num">{usd(r.max_drawdown_usd)}</td></tr>
               <tr><td className="dim">Brier</td><td className="num">{num(r.brier)}</td></tr>
+              <tr><td className="dim">Open value</td><td className="num">{usd(r.open_value_usd)}</td></tr>
+              <tr>
+                <td className="dim">Unrealized P&L</td>
+                <td className={`num ${signClass(r.unrealized_pnl_usd)}`}>{unrealized(r.unrealized_pnl_usd, r.open_unmarked)}</td>
+              </tr>
+              <tr title={`Trades ${EXCLUDED_NOTE}`}>
+                <td className="dim">Excluded from statistics</td>
+                <td className="num">{excludedCount(r.excluded_trades)}</td>
+              </tr>
+              <tr>
+                <td className="dim">Contracts with no bids</td>
+                <td className={`num ${r.open_no_bid_contracts ? "down" : ""}`}>{noBidContracts(r.open_no_bid_contracts)}</td>
+              </tr>
             </tbody>
           </table>
+          <p className="dim">Open value: {MARK_LABEL} (engine marks; contracts without bids at $0; unmarked trades left out).</p>
+          {r.excluded_trades ? (
+            <p className="dim" role="note">
+              {int(r.excluded_trades)} trade(s) {EXCLUDED_NOTE}.
+            </p>
+          ) : null}
         </section>
       </div>
 

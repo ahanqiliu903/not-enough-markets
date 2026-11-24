@@ -18,6 +18,13 @@ class BuildError(ValueError):
     pass
 
 
+UNRESOLVED_MAKER = (
+    "exit.take_profit.maker_fee_rate is unknown: set it (0 if {series} charges no maker fee;"
+    " see fee_type at GET /series/{series}), or let `nem run`/`nem validate` read it from"
+    " the series. Replay and suggest never look it up"
+)
+
+
 @dataclass
 class StrategyRuntime:
     portfolio: PortfolioConfig
@@ -65,11 +72,14 @@ def build_strategies(
                 sizer = registry.build("sizer", s.sizing, Sizer)
             except PluginError as e:
                 raise BuildError(_where(p, s, str(e))) from e
+            tp = s.exit.take_profit if s.exit is not None else None
+            if tp is not None and tp.maker_fee_rate is None:
+                raise BuildError(_where(p, s, UNRESOLVED_MAKER.format(series=s.series)))
             for plugin in (signal, *gates):
                 missing = sorted(set(plugin.feeds_used()) - feed_names)
                 if missing:
                     raise BuildError(_where(p, s, f"{plugin.name} uses undeclared feeds {missing}"))
-            out.append(StrategyRuntime(p, s, signal, gates, sizer, PaperBroker(s.taker_fee_rate)))
+            out.append(StrategyRuntime(p, s, signal, gates, sizer, PaperBroker(s.taker_rate)))
     return out
 
 

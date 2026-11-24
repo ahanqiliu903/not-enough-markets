@@ -5,8 +5,14 @@
  * recorded prices and feed values as stored; nothing here is recomputed.
  */
 
-/** `PRAGMA user_version` values this build reads. */
-export const DB_SCHEMA_VERSIONS = [3] as const;
+/**
+ * `PRAGMA user_version` values this build reads. v4 only adds the engine's `manual_lots` /
+ * `manual_fills` tables (imported manual trading), v5 only `settlement_checks`
+ * (`nem settle verify`), v6 only `forecast_backfill` (`nem backfill forecasts`), v7
+ * only `exit_learning` (exited trades learned from at settlement) and v8 only the `trades`
+ * columns `excluded_at` / `exclude_reason` (`nem trade exclude`); nothing read here changed.
+ */
+export const DB_SCHEMA_VERSIONS = [3, 4, 5, 6, 7, 8] as const;
 
 export type DbErrorKind =
   /** The active source has no database attached or found. */

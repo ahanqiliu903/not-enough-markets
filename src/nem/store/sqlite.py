@@ -7,17 +7,19 @@ process can read while the runner writes.
 import json
 import sqlite3
 from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from nem.core.types import (
     DecisionKind,
     Depth,
     FeedValue,
     Fill,
+    ManualFill,
+    ManualLot,
     MarketSnapshot,
     Mode,
     Order,
@@ -28,7 +30,11 @@ from nem.core.types import (
     Trade,
 )
 
-SCHEMA_VERSION = 3
+if TYPE_CHECKING:
+    from nem.backfill.model import BackfillRow
+    from nem.settle.model import SettlementCheck
+
+SCHEMA_VERSION = 8
 
 # Upgrades for existing databases: MIGRATIONS[v] takes a database from v-1 to v. A fresh
 # database runs schema.sql (always the latest) instead.
@@ -46,6 +52,114 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE snapshots ADD COLUMN floor_strike REAL;
     ALTER TABLE snapshots ADD COLUMN cap_strike REAL;
     """,
+    # same DDL as schema.sql (comments there)
+    4: """
+    CREATE TABLE manual_lots (
+        portfolio        TEXT NOT NULL,
+        strategy         TEXT NOT NULL,
+        lot_key          TEXT NOT NULL,
+        provenance       TEXT NOT NULL DEFAULT 'manual_import' CHECK (provenance = 'manual_import'),
+        ticker           TEXT NOT NULL,
+        side             TEXT NOT NULL CHECK (side IN ('yes', 'no')),
+        qty              REAL NOT NULL CHECK (qty > 0),
+        entry_price      REAL NOT NULL,
+        exit_price       REAL NOT NULL,
+        open_fees        REAL NOT NULL,
+        close_fees       REAL NOT NULL,
+        pnl_without_fees REAL NOT NULL,
+        realized_pnl     REAL NOT NULL,
+        opened_at        TEXT NOT NULL,
+        closed_at        TEXT NOT NULL,
+        source_file      TEXT NOT NULL,
+        source_line      INTEGER NOT NULL,
+        imported_at      TEXT NOT NULL,
+        PRIMARY KEY (portfolio, lot_key)
+    );
+    CREATE TABLE manual_fills (
+        portfolio   TEXT NOT NULL,
+        fill_key    TEXT NOT NULL,
+        provenance  TEXT NOT NULL DEFAULT 'manual_import' CHECK (provenance = 'manual_import'),
+        ticker      TEXT NOT NULL,
+        side        TEXT NOT NULL CHECK (side IN ('yes', 'no')),
+        qty         REAL NOT NULL CHECK (qty > 0),
+        price       REAL NOT NULL,
+        fee         REAL NOT NULL,
+        liquidity   TEXT NOT NULL CHECK (liquidity IN ('maker', 'taker')),
+        filled_at   TEXT NOT NULL,
+        source_file TEXT NOT NULL,
+        source_line INTEGER NOT NULL,
+        imported_at TEXT NOT NULL,
+        PRIMARY KEY (portfolio, fill_key)
+    );
+    """,
+    5: """
+    CREATE TABLE settlement_checks (
+        ticker                  TEXT PRIMARY KEY,
+        series                  TEXT NOT NULL,
+        market_date             TEXT,     -- YYYY-MM-DD CLI climate day (local standard time)
+        measure                 TEXT NOT NULL CHECK (measure IN ('high', 'low')),
+        station                 TEXT NOT NULL,     -- NWS CLI id, e.g. CLINYC ('' if unmapped)
+        rules_source            TEXT NOT NULL      -- what the market's own rules name
+            CHECK (rules_source IN ('nws_cli', 'twc', 'wu', 'unverified')),
+        strike_type             TEXT,
+        floor_strike            REAL,
+        cap_strike              REAL,
+        observed_value          REAL,     -- whole degrees F; NULL when no source had it
+        source                  TEXT,     -- iem_cli (NWS CLI via IEM) / iem_asos_obs (approximate)
+        source_ref              TEXT,     -- e.g. the CLI product id
+        derived_result          TEXT CHECK (derived_result IN ('yes', 'no')),  -- replay truth
+        kalshi_result           TEXT,     -- as Kalshi reports it, incl. 'scalar'; NULL if unfetched
+        kalshi_value            REAL,     -- Kalshi's expiration_value
+        kalshi_settlement_value REAL,     -- dollars paid per YES contract
+        status                  TEXT NOT NULL
+            CHECK (status IN ('agree', 'disagree', 'kalshi_missing', 'source_missing')),
+        note                    TEXT NOT NULL DEFAULT '',
+        checked_at              TEXT NOT NULL
+    );
+    """,
+    6: """
+    CREATE TABLE forecast_backfill (
+        source      TEXT NOT NULL,
+        station     TEXT NOT NULL,
+        target_date TEXT NOT NULL,
+        field       TEXT NOT NULL,
+        value       REAL NOT NULL,
+        run_time    TEXT NOT NULL,
+        valid_from  TEXT NOT NULL,
+        known_at    TEXT NOT NULL,
+        run_id      TEXT NOT NULL,
+        provenance  TEXT NOT NULL DEFAULT 'backfill' CHECK (provenance = 'backfill'),
+        fetched_at  TEXT NOT NULL,
+        PRIMARY KEY (source, station, target_date, field, run_time)
+    );
+    CREATE INDEX forecast_backfill_target ON forecast_backfill (station, target_date);
+    """,
+    # Exits recorded before v7 never fed learning; queue them so the next settlement pass
+    # learns from their markets' results, as it does for every exit from now on.
+    7: """
+    CREATE TABLE exit_learning (
+        portfolio  TEXT NOT NULL,
+        strategy   TEXT NOT NULL,
+        window_id  TEXT NOT NULL,
+        won        INTEGER,
+        learned_at TEXT,
+        PRIMARY KEY (portfolio, strategy, window_id),
+        FOREIGN KEY (portfolio, strategy, window_id)
+            REFERENCES trades (portfolio, strategy, window_id)
+    );
+    CREATE INDEX exit_learning_pending ON exit_learning (learned_at);
+    INSERT INTO exit_learning (portfolio, strategy, window_id)
+    SELECT DISTINCT t.portfolio, t.strategy, t.window_id FROM trades t JOIN orders o
+        ON o.portfolio = t.portfolio AND o.strategy = t.strategy AND o.window_id = t.window_id
+    WHERE t.settled_at IS NOT NULL AND o.status IN ('exit_take_profit', 'exit_stop');
+    """,
+    8: "",  # columns only: ADDED_COLUMNS
+}
+
+# Columns a version adds to an existing table, as (table, column, type). Added only when
+# missing, so the upgrade is idempotent (SQLite has no ADD COLUMN IF NOT EXISTS).
+ADDED_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
+    8: [("trades", "excluded_at", "TEXT"), ("trades", "exclude_reason", "TEXT")],
 }
 
 HEARTBEAT_RETENTION = timedelta(days=2)
@@ -94,8 +208,17 @@ class Store:
         if version == 0:
             script = files("nem.store").joinpath("schema.sql").read_text()
         else:
-            script = "".join(MIGRATIONS[v] for v in range(version + 1, SCHEMA_VERSION + 1))
+            script = "".join(self._upgrade(v) for v in range(version + 1, SCHEMA_VERSION + 1))
         self._conn.executescript(f"BEGIN; {script} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;")
+
+    def _upgrade(self, v: int) -> str:
+        """DDL taking the database from v-1 to v."""
+        added = ""
+        for table, column, kind in ADDED_COLUMNS.get(v, []):
+            have = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+            if column not in have:
+                added += f"ALTER TABLE {table} ADD COLUMN {column} {kind};\n"
+        return MIGRATIONS[v] + added
 
     def close(self) -> None:
         self._conn.close()
@@ -168,22 +291,16 @@ class Store:
         if where:
             sql += " WHERE " + " AND ".join(where)
         for r in self._conn.execute(sql + " ORDER BY ts, id", args):
-            yield MarketSnapshot(
-                ts=_dt(r["ts"]),
-                series=r["series"],
-                window_id=r["window_id"],
-                ticker=r["ticker"],
-                open_time=_dt(r["open_time"]),
-                close_time=_dt(r["close_time"]),
-                yes_bid=r["yes_bid"],
-                yes_ask=r["yes_ask"],
-                no_bid=r["no_bid"],
-                no_ask=r["no_ask"],
-                depth=_depth_from_json(r["depth_json"]),
-                strike_type=r["strike_type"],
-                floor_strike=r["floor_strike"],
-                cap_strike=r["cap_strike"],
-            )
+            yield _snapshot(r)
+
+    def latest_snapshot(self, ticker: str, at_or_before: datetime) -> MarketSnapshot | None:
+        """The market's most recent snapshot with `ts <= at_or_before` (mark-to-market)."""
+        row = self._conn.execute(
+            "SELECT * FROM snapshots WHERE ticker = ? AND ts <= ? ORDER BY ts DESC, id DESC"
+            " LIMIT 1",
+            (ticker, _ts(at_or_before)),
+        ).fetchone()
+        return None if row is None else _snapshot(row)
 
     # --- settlements --------------------------------------------------------
 
@@ -365,10 +482,79 @@ class Store:
         if cur.rowcount != 1:
             raise StoreError(f"no open trade for {key[0]}/{key[1]} {window_id}")
 
+    def exit_trade(
+        self,
+        key: StrategyKey,
+        window_id: str,
+        won: bool,
+        realized_pnl: float,
+        settled_at: datetime,
+    ) -> None:
+        """Close a trade sold before settlement (`won` = P&L > 0) and queue it, in the same
+        transaction, for learning once its market settles (`learning_due`)."""
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE trades SET won = ?, realized_pnl = ?, settled_at = ?"
+                " WHERE portfolio = ? AND strategy = ? AND window_id = ? AND settled_at IS NULL",
+                (int(won), realized_pnl, _ts(settled_at), *key, window_id),
+            )
+            if cur.rowcount != 1:
+                raise StoreError(f"no open trade for {key[0]}/{key[1]} {window_id}")
+            self._conn.execute(
+                "INSERT INTO exit_learning (portfolio, strategy, window_id) VALUES (?, ?, ?)",
+                (*key, window_id),
+            )
+
+    def learning_due(self, now: datetime) -> list[Trade]:
+        """Exited trades whose market has closed and whose settlement isn't learned yet."""
+        rows = self._conn.execute(
+            "SELECT t.* FROM trades t JOIN exit_learning e ON e.portfolio = t.portfolio"
+            " AND e.strategy = t.strategy AND e.window_id = t.window_id"
+            " WHERE e.learned_at IS NULL AND t.close_time <= ?"
+            " ORDER BY t.close_time, t.portfolio, t.strategy, t.window_id",
+            (_ts(now),),
+        )
+        return [_trade(r) for r in rows]
+
+    def learn_exit(self, trade: Trade, won_at_settlement: bool, learned_at: datetime) -> bool:
+        """Record an exited trade's settlement outcome and bump its side's learned count,
+        once: False (and nothing changes) if it was already learned or never queued."""
+        key = (trade.portfolio, trade.strategy)
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE exit_learning SET won = ?, learned_at = ?"
+                " WHERE portfolio = ? AND strategy = ? AND window_id = ? AND learned_at IS NULL",
+                (int(won_at_settlement), _ts(learned_at), *key, trade.window_id),
+            )
+            if cur.rowcount != 1:
+                return False
+            self._conn.execute(
+                "INSERT INTO stats (portfolio, strategy, key, wins, n) VALUES (?, ?, ?, ?, 1)"
+                " ON CONFLICT (portfolio, strategy, key)"
+                " DO UPDATE SET wins = wins + excluded.wins, n = n + 1",
+                (*key, trade.side, int(won_at_settlement)),
+            )
+        return True
+
+    def exit_outcomes(self, key: StrategyKey) -> dict[str, bool | None]:
+        """window_id -> whether an exited trade's side won at settlement (None: pending)."""
+        rows = self._conn.execute(
+            "SELECT window_id, won FROM exit_learning WHERE portfolio = ? AND strategy = ?",
+            key,
+        )
+        return {r[0]: None if r[1] is None else bool(r[1]) for r in rows}
+
     def open_trades(
-        self, portfolio: str | None = None, strategy: StrategyKey | None = None
+        self,
+        portfolio: str | None = None,
+        strategy: StrategyKey | None = None,
+        include_excluded: bool = True,
     ) -> list[Trade]:
+        """Open trades, oldest first. `include_excluded=False` leaves out excluded trades
+        (`nem trade exclude`), as every money and statistics total does."""
         sql = "SELECT * FROM trades WHERE settled_at IS NULL"
+        if not include_excluded:
+            sql += " AND excluded_at IS NULL"
         args: list[str] = []
         if portfolio is not None:
             sql += " AND portfolio = ?"
@@ -381,7 +567,8 @@ class Store:
     def trades_due(self, now: datetime) -> list[Trade]:
         """Open trades whose market has closed, so their result may be available."""
         rows = self._conn.execute(
-            "SELECT * FROM trades WHERE settled_at IS NULL AND close_time <= ? ORDER BY close_time",
+            "SELECT * FROM trades WHERE settled_at IS NULL AND close_time <= ?"
+            " ORDER BY close_time, portfolio, strategy, window_id",
             (_ts(now),),
         )
         return [_trade(r) for r in rows]
@@ -399,10 +586,14 @@ class Store:
         before: datetime | None = None,
         limit: int | None = None,
         portfolio: str | None = None,
+        include_excluded: bool = True,
     ) -> list[Trade]:
         """Settled trades, oldest first. `before` is strict: `settled_at < before`.
-        `limit` keeps the most recent N."""
+        `limit` keeps the most recent N. `include_excluded=False` leaves out excluded trades
+        (`nem trade exclude`), as every money and statistics total does; listings keep them."""
         sql = "SELECT * FROM trades WHERE settled_at IS NOT NULL"
+        if not include_excluded:
+            sql += " AND excluded_at IS NULL"
         args: list[str | int] = []
         if portfolio is not None:
             sql += " AND portfolio = ?"
@@ -419,6 +610,54 @@ class Store:
             sql += " LIMIT ?"
             args.append(limit)
         return [_trade(r) for r in reversed(self._conn.execute(sql, args).fetchall())]
+
+    # --- exclusions (nem trade exclude / include) -------------------------------
+
+    def trades_for_ticker(
+        self, ticker: str, portfolio: str | None = None, strategy: str | None = None
+    ) -> list[Trade]:
+        """Every trade (open or settled) on market `ticker`, optionally narrowed."""
+        sql = "SELECT * FROM trades WHERE ticker = ?"
+        args = [ticker]
+        if portfolio is not None:
+            sql += " AND portfolio = ?"
+            args.append(portfolio)
+        if strategy is not None:
+            sql += " AND strategy = ?"
+            args.append(strategy)
+        rows = self._conn.execute(sql + " ORDER BY portfolio, strategy, window_id", args)
+        return [_trade(r) for r in rows]
+
+    def set_excluded(self, trade: Trade, reason: str | None, ts: datetime | None) -> None:
+        """Exclude a trade (`reason` and `ts` set) or count it again (both None). An excluded
+        trade is kept and listed, but left out of statistics, P&L, equity, cash and risk
+        limits, as if it had never been taken."""
+        if (reason is None) != (ts is None):
+            raise StoreError("set_excluded takes both a reason and a time, or neither")
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE trades SET excluded_at = ?, exclude_reason = ?"
+                " WHERE portfolio = ? AND strategy = ? AND window_id = ?",
+                (
+                    None if ts is None else _ts(ts),
+                    reason,
+                    trade.portfolio,
+                    trade.strategy,
+                    trade.window_id,
+                ),
+            )
+        if cur.rowcount != 1:
+            raise StoreError(f"no trade {trade.portfolio}/{trade.strategy} {trade.window_id}")
+
+    def excluded_trades(self, portfolio: str | None = None) -> list[Trade]:
+        """Excluded trades, open or settled, in the order they were excluded."""
+        sql = "SELECT * FROM trades WHERE excluded_at IS NOT NULL"
+        args: list[str] = []
+        if portfolio is not None:
+            sql += " AND portfolio = ?"
+            args.append(portfolio)
+        rows = self._conn.execute(sql + " ORDER BY excluded_at, portfolio, strategy", args)
+        return [_trade(r) for r in rows]
 
     def p_models(self, portfolio: str, strategy: str) -> dict[str, float]:
         """window_id -> the p_model of the signal that opened that trade (for calibration)."""
@@ -462,6 +701,184 @@ class Store:
             "SELECT MAX(ts) FROM ledger WHERE portfolio = ? AND kind = ?", (portfolio, kind)
         ).fetchone()
         return None if row[0] is None else _dt(row[0])
+
+    # --- manual imports (nem import kalshi-pnl): history only, never traded -------------
+
+    def add_manual_lots(self, lots: Sequence[ManualLot], imported_at: datetime) -> int:
+        """Idempotent per (portfolio, lot_key). Returns how many lots were new."""
+        with self._conn:
+            before = self._conn.total_changes
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO manual_lots (portfolio, strategy, lot_key, ticker, side,"
+                " qty, entry_price, exit_price, open_fees, close_fees, pnl_without_fees,"
+                " realized_pnl, opened_at, closed_at, source_file, source_line, imported_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        lot.portfolio,
+                        lot.strategy,
+                        lot.lot_key,
+                        lot.ticker,
+                        lot.side,
+                        lot.qty,
+                        lot.entry_price,
+                        lot.exit_price,
+                        lot.open_fees,
+                        lot.close_fees,
+                        lot.pnl_without_fees,
+                        lot.realized_pnl,
+                        _ts(lot.opened_at),
+                        _ts(lot.closed_at),
+                        lot.source_file,
+                        lot.source_line,
+                        _ts(imported_at),
+                    )
+                    for lot in lots
+                ],
+            )
+            return self._conn.total_changes - before
+
+    def manual_lots(self, portfolio: str, strategy: str | None = None) -> list[ManualLot]:
+        """Imported lots, oldest close first."""
+        sql = "SELECT * FROM manual_lots WHERE portfolio = ?"
+        args = [portfolio]
+        if strategy is not None:
+            sql += " AND strategy = ?"
+            args.append(strategy)
+        rows = self._conn.execute(sql + " ORDER BY closed_at, opened_at, lot_key", args)
+        return [
+            ManualLot(
+                portfolio=r["portfolio"],
+                strategy=r["strategy"],
+                lot_key=r["lot_key"],
+                ticker=r["ticker"],
+                side=r["side"],
+                qty=r["qty"],
+                entry_price=r["entry_price"],
+                exit_price=r["exit_price"],
+                open_fees=r["open_fees"],
+                close_fees=r["close_fees"],
+                pnl_without_fees=r["pnl_without_fees"],
+                realized_pnl=r["realized_pnl"],
+                opened_at=_dt(r["opened_at"]),
+                closed_at=_dt(r["closed_at"]),
+                source_file=r["source_file"],
+                source_line=r["source_line"],
+            )
+            for r in rows
+        ]
+
+    def manual_strategies(self) -> list[StrategyKey]:
+        """(portfolio, strategy) pairs that hold imported manual lots."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT portfolio, strategy FROM manual_lots ORDER BY portfolio, strategy"
+        )
+        return [(r[0], r[1]) for r in rows]
+
+    def add_manual_fills(self, fills: Sequence[ManualFill], imported_at: datetime) -> int:
+        """Idempotent per (portfolio, fill_key). Returns how many fills were new."""
+        with self._conn:
+            before = self._conn.total_changes
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO manual_fills (portfolio, fill_key, ticker, side, qty,"
+                " price, fee, liquidity, filled_at, source_file, source_line, imported_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        f.portfolio,
+                        f.fill_key,
+                        f.ticker,
+                        f.side,
+                        f.qty,
+                        f.price,
+                        f.fee,
+                        f.liquidity,
+                        _ts(f.filled_at),
+                        f.source_file,
+                        f.source_line,
+                        _ts(imported_at),
+                    )
+                    for f in fills
+                ],
+            )
+            return self._conn.total_changes - before
+
+    def manual_fills(self, portfolio: str) -> list[ManualFill]:
+        rows = self._conn.execute(
+            "SELECT * FROM manual_fills WHERE portfolio = ? ORDER BY filled_at, fill_key",
+            (portfolio,),
+        )
+        return [
+            ManualFill(
+                portfolio=r["portfolio"],
+                fill_key=r["fill_key"],
+                ticker=r["ticker"],
+                side=r["side"],
+                qty=r["qty"],
+                price=r["price"],
+                fee=r["fee"],
+                liquidity=r["liquidity"],
+                filled_at=_dt(r["filled_at"]),
+                source_file=r["source_file"],
+                source_line=r["source_line"],
+            )
+            for r in rows
+        ]
+
+    # --- settlement checks (nem settle verify) -----------------------------------------
+
+    def save_settlement_checks(self, checks: Sequence["SettlementCheck"]) -> None:
+        """Insert or replace by ticker: a re-check overwrites the previous one."""
+        with self._conn:
+            self._conn.executemany(
+                f"INSERT OR REPLACE INTO settlement_checks ({', '.join(_CHECK_COLUMNS)})"
+                f" VALUES ({', '.join('?' * len(_CHECK_COLUMNS))})",
+                [_check_row(c) for c in checks],
+            )
+
+    def settlement_check_candidates(self) -> list[str]:
+        """Weather markets this database knows: settled ones and imported manual lots."""
+        rows = self._conn.execute(
+            "SELECT ticker FROM settlements UNION SELECT ticker FROM manual_lots"
+        ).fetchall()
+        return sorted(t for (t,) in rows if t.startswith(("KXHIGH", "KXLOW")))
+
+    def settlement_checks(self, status: str | None = None) -> list["SettlementCheck"]:
+        sql = "SELECT * FROM settlement_checks"
+        params: list[str] = []
+        if status is not None:
+            sql += " WHERE status = ?"
+            params.append(status)
+        rows = self._conn.execute(sql + " ORDER BY ticker", params).fetchall()
+        return [_check(r) for r in rows]
+
+    # --- forecast backfill (nem backfill forecasts) ------------------------------------
+
+    def save_backfill(self, rows: Sequence["BackfillRow"]) -> int:
+        """Insert or replace by (source, station, target date, field, run): a re-fetch of
+        the same model run overwrites it. Returns the number of rows written."""
+        with self._conn:
+            self._conn.executemany(
+                f"INSERT OR REPLACE INTO forecast_backfill ({', '.join(_BACKFILL_COLUMNS)})"
+                f" VALUES ({', '.join('?' * len(_BACKFILL_COLUMNS))})",
+                [_backfill_row(b) for b in rows],
+            )
+        return len(rows)
+
+    def backfill_rows(
+        self, station: str | None = None, target_date: date | None = None
+    ) -> list["BackfillRow"]:
+        """Every stored backfilled forecast (optionally one station / target day), ordered
+        by known_at. Callers pick what was knowable with `nem.backfill.known_before`."""
+        sql, args = "SELECT * FROM forecast_backfill WHERE 1", list[str]()
+        if station is not None:
+            sql += " AND station = ?"
+            args.append(station)
+        if target_date is not None:
+            sql += " AND target_date = ?"
+            args.append(target_date.isoformat())
+        rows = self._conn.execute(sql + " ORDER BY known_at, source, field", args).fetchall()
+        return [_backfill(r) for r in rows]
 
     # --- feeds ------------------------------------------------------------------
 
@@ -509,12 +926,27 @@ class Store:
             )
 
     def stat(self, portfolio: str, strategy: str, key: str) -> tuple[int, int]:
-        """(wins, n); (0, 0) if never recorded."""
+        """(wins, n); (0, 0) if never recorded. Trades excluded from statistics are taken
+        back out at read time (settlement bumps the per-side count of every trade, and an
+        exclusion can come later or be undone): a held trade counts once settled, with its
+        `won`; an exited one once learned, with its side's result at settlement."""
         row = self._conn.execute(
             "SELECT wins, n FROM stats WHERE portfolio = ? AND strategy = ? AND key = ?",
             (portfolio, strategy, key),
         ).fetchone()
-        return (0, 0) if row is None else (row[0], row[1])
+        if row is None:
+            return (0, 0)
+        out = self._conn.execute(
+            "SELECT COALESCE(SUM(CASE WHEN e.window_id IS NULL THEN t.won ELSE e.won END), 0),"
+            " COUNT(*) FROM trades t LEFT JOIN exit_learning e ON e.portfolio = t.portfolio"
+            " AND e.strategy = t.strategy AND e.window_id = t.window_id"
+            " WHERE t.portfolio = ? AND t.strategy = ? AND t.side = ?"
+            " AND t.excluded_at IS NOT NULL AND (CASE WHEN e.window_id IS NULL"
+            " THEN t.settled_at IS NOT NULL ELSE e.learned_at IS NOT NULL END)",
+            (portfolio, strategy, key),
+        ).fetchone()
+        n = max(0, row[1] - out[1])
+        return (min(n, max(0, row[0] - out[0])), n)
 
     def heartbeat(
         self,
@@ -590,6 +1022,82 @@ class Store:
         return None if row[0] is None else _dt(row[0])
 
 
+_CHECK_COLUMNS = (
+    "ticker", "series", "market_date", "measure", "station", "rules_source", "strike_type",
+    "floor_strike", "cap_strike", "observed_value", "source", "source_ref", "derived_result",
+    "kalshi_result", "kalshi_value", "kalshi_settlement_value", "status", "note", "checked_at",
+)  # fmt: skip
+
+
+def _check_row(c: "SettlementCheck") -> tuple[Any, ...]:
+    return (
+        c.ticker, c.series, c.market_date.isoformat() if c.market_date else None, c.measure,
+        c.station, c.rules_source, c.strike_type, c.floor_strike, c.cap_strike,
+        c.observed_value, c.source, c.source_ref, c.derived_result, c.kalshi_result,
+        c.kalshi_value, c.kalshi_settlement_value, c.status, c.note, _ts(c.checked_at),
+    )  # fmt: skip
+
+
+def _check(r: sqlite3.Row) -> "SettlementCheck":
+    from nem.settle.model import SettlementCheck
+
+    return SettlementCheck(
+        ticker=r["ticker"], series=r["series"],
+        market_date=date.fromisoformat(r["market_date"]) if r["market_date"] else None,
+        measure=r["measure"], station=r["station"], rules_source=r["rules_source"],
+        strike_type=r["strike_type"], floor_strike=r["floor_strike"],
+        cap_strike=r["cap_strike"], observed_value=r["observed_value"], source=r["source"],
+        source_ref=r["source_ref"], derived_result=r["derived_result"],
+        kalshi_result=r["kalshi_result"], kalshi_value=r["kalshi_value"],
+        kalshi_settlement_value=r["kalshi_settlement_value"], status=r["status"],
+        note=r["note"], checked_at=_dt(r["checked_at"]),
+    )  # fmt: skip
+
+
+_BACKFILL_COLUMNS = (
+    "source", "station", "target_date", "field", "value", "run_time", "valid_from",
+    "known_at", "run_id", "provenance", "fetched_at",
+)  # fmt: skip
+
+
+def _backfill_row(b: "BackfillRow") -> tuple[Any, ...]:
+    return (
+        b.source, b.station, b.target_date.isoformat(), b.field, b.value, _ts(b.run_time),
+        _ts(b.valid_from), _ts(b.known_at), b.run_id, b.provenance, _ts(b.fetched_at),
+    )  # fmt: skip
+
+
+def _backfill(r: sqlite3.Row) -> "BackfillRow":
+    from nem.backfill.model import BackfillRow
+
+    return BackfillRow(
+        source=r["source"], station=r["station"],
+        target_date=date.fromisoformat(r["target_date"]), field=r["field"], value=r["value"],
+        run_time=_dt(r["run_time"]), valid_from=_dt(r["valid_from"]),
+        known_at=_dt(r["known_at"]), run_id=r["run_id"], fetched_at=_dt(r["fetched_at"]),
+        provenance=r["provenance"],
+    )  # fmt: skip
+
+
+def _snapshot(r: sqlite3.Row) -> MarketSnapshot:
+    return MarketSnapshot(
+        ts=_dt(r["ts"]),
+        series=r["series"],
+        window_id=r["window_id"],
+        ticker=r["ticker"],
+        open_time=_dt(r["open_time"]),
+        close_time=_dt(r["close_time"]),
+        yes_bid=r["yes_bid"],
+        yes_ask=r["yes_ask"],
+        no_bid=r["no_bid"],
+        no_ask=r["no_ask"],
+        depth=_depth_from_json(r["depth_json"]),
+        strike_type=r["strike_type"],
+        floor_strike=r["floor_strike"],
+        cap_strike=r["cap_strike"],
+    )
+
+
 def _lastrowid(cur: sqlite3.Cursor) -> int:
     if cur.lastrowid is None:
         raise StoreError("insert returned no row id")
@@ -612,4 +1120,6 @@ def _trade(r: sqlite3.Row) -> Trade:
         won=None if r["won"] is None else bool(r["won"]),
         realized_pnl=r["realized_pnl"],
         settled_at=None if r["settled_at"] is None else _dt(r["settled_at"]),
+        excluded_at=None if r["excluded_at"] is None else _dt(r["excluded_at"]),
+        exclude_reason=r["exclude_reason"],
     )

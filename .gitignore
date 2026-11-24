@@ -28,6 +28,10 @@ service-account*.json
 out/
 logs/
 
+# Your private trading exports and reports derived from them: never commit
+data/private/
+reports/
+
 # Local planning notes (reference private repo)
 template-bot-handoff.md
 

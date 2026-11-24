@@ -1,4 +1,4 @@
-schema_version,portfolio,strategy,series,status,trades,wins,open,win_rate,win_rate_lo,win_rate_hi,break_even_rate,edge_cents,edge_lo_cents,edge_hi_cents,z,p,pnl_usd,pnl_per_trade_usd,roi,max_drawdown_usd,trades_to_detect,trades_to_detect_edge_cents,verdict,brier
-1.0,fixture,btc_edge,KXBTC15M,active,170,169,0,0.9941,0.9674,0.999,0.8945,9.96,7.29,10.45,4.229,0.0,84.67,0.4981,0.1114,4.54,33,9.96,edge,0.0081
-1.0,fixture,eth_no_edge,KXETH15M,active,54,39,0,0.7222,0.5911,0.8238,0.8919,-16.96,-30.08,-6.8,-4.015,1.0,-45.8,-0.8481,-0.1902,46.31,1405,2.0,no_edge,0.2367
-1.0,fixture,sol_undecided,KXSOL15M,active,170,156,0,0.9176,0.8665,0.9503,0.8941,2.36,-2.75,5.63,1.0,0.1587,20.05,0.1179,0.0264,12.66,978,2.36,undecided,0.076
+schema_version,portfolio,strategy,series,status,trades,wins,open,win_rate,win_rate_lo,win_rate_hi,break_even_rate,edge_cents,edge_lo_cents,edge_hi_cents,z,p,pnl_usd,pnl_per_trade_usd,roi,max_drawdown_usd,trades_to_detect,trades_to_detect_edge_cents,verdict,brier,open_value_usd,unrealized_pnl_usd,open_unmarked,open_no_bid_contracts,excluded_trades
+1.0,fixture,btc_edge,KXBTC15M,active,170,169,0,0.9941,0.9674,0.999,0.8945,9.96,7.29,10.45,4.229,0.0,84.67,0.4981,0.1114,4.54,33,9.96,edge,0.0081,0.0,0.0,0,0,0
+1.0,fixture,eth_no_edge,KXETH15M,active,54,39,0,0.7222,0.5911,0.8238,0.8919,-16.96,-30.08,-6.8,-4.015,1.0,-45.8,-0.8481,-0.1902,46.31,1405,2.0,no_edge,0.2367,0.0,0.0,0,0,0
+1.0,fixture,sol_undecided,KXSOL15M,active,170,156,0,0.9176,0.8665,0.9503,0.8941,2.36,-2.75,5.63,1.0,0.1587,20.05,0.1179,0.0264,12.66,978,2.36,undecided,0.076,0.0,0.0,0,0,0

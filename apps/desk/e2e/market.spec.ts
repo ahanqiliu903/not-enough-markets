@@ -50,7 +50,7 @@ test("Market without a source explains where data comes from", async () => {
 
 test("sample data: series, markets, top of book, depth canvas and feed overlay", async () => {
   await page.getByRole("button", { name: "Load sample data" }).click();
-  await expect(page.getByTestId("market-db")).toContainText("schema v3");
+  await expect(page.getByTestId("market-db")).toContainText("schema v8");
   await expect(page.getByRole("tab", { name: /KXBTC15M/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("market-count")).toContainText("of 170");
   const detail = page.getByRole("region", { name: /^Market KXBTC15M-/ });

@@ -1,0 +1,75 @@
+# Example: the forecast gates (source_agreement, bracket_distance, sky_conditions) on a
+# daily-high series. Thresholds are starting hypotheses, round numbers, not tuned on any
+# data. Paper only.
+#
+# Forecasts are read through ctx.forecasts, newest per source known before each decision:
+# - feeds: forecast feeds recorded live by `nem run` (one feed = one source). Sources,
+#   terms and how independent they are: docs/data-provenance.md, "Live model forecast
+#   feeds". Set NEM_USER_AGENT="nem paper trading (you@example.com)" in the environment
+#   (deploy/nem.env.example) so the providers can reach you; never put it in this file.
+# - backfill_sources: archived runs from `nem backfill forecasts` (table forecast_backfill),
+#   for replaying periods with no recorded feeds. This forward example doesn't set them:
+#   a strategy that does has its verdict capped (an "edge" reads "undecided"). To replay
+#   a past period, add to each gate e.g.
+#     backfill_sources: [iem_mos_gfs, iem_mos_nam, iem_mos_nbs, openmeteo_ecmwf_ifs]
+#   Each model counts once: a GFS MOS feed and the iem_mos_gfs backfill are one source
+#   (the recorded feed value wins when there is one).
+#
+# The three default feeds are public domain but NOT independent: NBM blends GFS, ECMWF,
+# GEM and others, and the NWS forecast starts from NBM. For more independent sources
+# enable the two Open-Meteo feeds below (raw ECMWF IFS and Canadian GEM) and add them to
+# each gate's `feeds`. They are opt-in because Open-Meteo's free API is for non-commercial
+# use only (open-meteo.com/en/terms); decide whether your use qualifies before enabling.
+# With fewer than min_sources values the gates fail closed (fail_open: false, the default).
+name: forecast_gates
+mode: paper
+starting_balance: 1000
+check_every: 5m
+risk:
+  max_city_allocation: 50
+  max_open_positions: 10
+
+feeds:
+  # GFS MOS (MAV) for Central Park, as NWS issued it, via the Iowa Environmental Mesonet
+  - {name: gfs_mos_nyc, type: iem_mos, model: GFS, station: CLINYC, every: 30m, max_age: 24h}
+  # National Blend of Models station text (NBS), same route
+  - {name: nbm_nyc, type: iem_mos, model: NBS, station: CLINYC, every: 30m, max_age: 24h}
+  # NWS point forecast (no cloud cover; its rain chance is read as `pop`)
+  - name: nws_nyc
+    type: nws_forecast
+    lat: 40.7833              # Central Park (KNYC), docs/kalshi-tickers.txt
+    lon: -73.9667
+    every: 30m
+    max_age: 12h
+  # Opt-in, Open-Meteo free tier (non-commercial only; CC BY 4.0, "Weather data by
+  # Open-Meteo.com"). Uncomment and add ecmwf_nyc / gem_nyc to the gates' feeds:
+  # - {name: ecmwf_nyc, type: open_meteo_run, model: ecmwf_ifs, terms: non-commercial,
+  #    station: CLINYC, every: 30m, max_age: 24h}
+  # - {name: gem_nyc, type: open_meteo_run, model: gem_global, terms: non-commercial,
+  #    station: CLINYC, every: 30m, max_age: 24h}
+
+strategies:
+  - name: nyc_high
+    series: KXHIGHNY
+    signal:
+      type: extreme_favorite
+      threshold: 0.85
+      min_edge: 0.01
+      priors: {yes: {wins: 90, n: 100}, no: {wins: 90, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.94}
+      - type: source_agreement   # >= 2 sources, all on our side of the strike
+        feeds: [gfs_mos_nyc, nbm_nyc, nws_nyc]
+        min_sources: 2
+        min_agree_fraction: 1.0
+        max_spread: 8            # degrees F between highest and lowest source
+      - type: bracket_distance   # median forecast >= 3F from where our side loses
+        feeds: [gfs_mos_nyc, nbm_nyc, nws_nyc]
+        min_distance: 3
+        use: median
+      - type: sky_conditions     # veto if any source has rain chance > 60% or overcast
+        feeds: [gfs_mos_nyc, nbm_nyc, nws_nyc]
+        max_pop: 60
+        max_cloud: 75
+        aggregate: max
+    sizing: {type: fixed, contracts: 5}

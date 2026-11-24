@@ -5,7 +5,7 @@ import json
 import logging
 import sys
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -14,6 +14,8 @@ from nem import __version__
 if TYPE_CHECKING:
     from nem.backtest.types import Grid, ParamValue
     from nem.core.config import PortfolioConfig
+    from nem.core.types import Trade
+    from nem.market.kalshi import KalshiClient, SeriesFees
     from nem.stats.report import PortfolioReport
     from nem.store import Store
 
@@ -23,6 +25,9 @@ DEFAULT_DB = Path("data/nem.db")
 DEFAULT_DIR = Path("portfolios")
 DEMO_DATA = Path("examples/data/sample.jsonl.gz")
 DEMO_DIR = Path("examples/portfolios")
+# `nem import kalshi-history`: a separate file, never the engine's recorded data
+DEFAULT_HISTORY_DB = Path("data/private/kalshi_history.db")
+DEFAULT_HISTORY_CACHE = Path("data/private/cache/kalshi")
 
 
 def _when(s: str) -> datetime:
@@ -50,11 +55,14 @@ HELP_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Getting started", ("init", "demo")),
     ("Portfolios and strategies", ("portfolio new", "portfolio list", "portfolio show",
                                    "strategy add", "validate")),
-    ("Backtest", ("replay", "suggest")),
+    ("Backtest", ("replay", "suggest", "import kalshi-history", "history replay",
+                  "history suggest")),
     ("Paper trading", ("run",)),
-    ("Results", ("summary", "report")),
+    ("Results", ("summary", "report", "trade exclude", "trade include", "trade list")),
+    ("Manual trading history", ("import kalshi-pnl", "settle verify", "backfill forecasts",
+                                "backfill coverage")),
     ("Operations (24/7)", ("status", "halt", "resume")),
-    ("Market data", ("record", "export")),
+    ("Market data", ("record", "export", "series uncovered")),
     ("Help", ("help",)),
 )  # fmt: skip
 
@@ -220,6 +228,22 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
         help="also write summary.json and status.json here, for NEM Desk (default: out)",
     )  # fmt: skip
 
+    trd = cmds.add(sub, "trade", "exclude trades (as if never taken) or undo")
+    trd_sub = trd.add_subparsers(dest="action", required=True)
+    for name, help_text in (
+        ("exclude", "leave a market's trade out of statistics, P&L, equity and risk limits"),
+        ("include", "count an excluded trade again"),
+    ):
+        te = with_db(with_dir(cmds.add(trd_sub, name, help_text, "trade")))
+        te.add_argument("ticker", help="market ticker of the trade")
+        te.add_argument("--portfolio", help="needed when several portfolios traded the market")
+        te.add_argument("--strategy", help="needed when several strategies traded the market")
+        if name == "exclude":
+            te.add_argument("--reason", required=True, help="why (kept with the trade, reported)")
+    tl = with_db(cmds.add(trd_sub, "list", "list trades, or only excluded ones", "trade"))
+    tl.add_argument("--excluded", action="store_true", help="only excluded trades, with reasons")
+    tl.add_argument("--portfolio", help="one portfolio only")
+
     rec = with_db(cmds.add(sub, "record", "record Kalshi market data without trading"))
     rec.add_argument(
         "--series", action="append", required=True, help="series ticker, e.g. KXBTC15M (repeatable)"
@@ -227,6 +251,156 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
     rec.add_argument("--interval", type=float, default=5.0, help="seconds between polls")
     rec.add_argument("--depth", type=int, default=10, help="orderbook levels to keep (0 = none)")
     rec.add_argument("--once", action="store_true", help="poll once and exit")
+
+    imp = cmds.add(sub, "import", "import trading done outside NEM, as a read-only portfolio")
+    imp_sub = imp.add_subparsers(dest="source", required=True)
+    kp = with_db(with_dir(cmds.add(
+        imp_sub, "kalshi-pnl",
+        "import Kalshi realized-PnL exports as a read-only manual baseline (never traded)",
+        "import",
+    )))  # fmt: skip
+    kp.add_argument("files", nargs="+", type=Path, help="realized_pnl_*.csv from Kalshi")
+    kp.add_argument("--activity", type=Path, help="Kalshi activity CSV, for fill times")
+    kp.add_argument(
+        "--from", dest="start", type=date.fromisoformat,
+        help="first close date, inclusive, in the file's offset (default: no limit)",
+    )  # fmt: skip
+    kp.add_argument(
+        "--to", dest="end", type=date.fromisoformat,
+        help="last close date, inclusive (default: no limit)",
+    )  # fmt: skip
+    kp.add_argument(
+        "--include-non-weather", action="store_true", help="keep markets other than KXHIGH*"
+    )
+    kp.add_argument(
+        "--portfolio", default="manual_baseline", help="portfolio name (default: manual_baseline)"
+    )
+
+    kh = cmds.add(imp_sub, "kalshi-history", (
+        "import settled markets from Kalshi's public historical API (minute candles, no"
+        " depth, trade prints) into a separate history database"
+    ), "import")  # fmt: skip
+    kh.add_argument(
+        "--series", action="append", required=True, help="series ticker, e.g. KXHIGHNY (repeatable)"
+    )
+    kh.add_argument(
+        "--from", dest="start", type=date.fromisoformat, required=True,
+        help="first market date, inclusive",
+    )  # fmt: skip
+    kh.add_argument(
+        "--to", dest="end", type=date.fromisoformat, required=True,
+        help="last market date, inclusive",
+    )  # fmt: skip
+    kh.add_argument(
+        "--db", type=Path, default=DEFAULT_HISTORY_DB,
+        help=f"history database, never data/nem.db (default: {DEFAULT_HISTORY_DB})",
+    )  # fmt: skip
+    kh.add_argument(
+        "--cache", type=Path, default=DEFAULT_HISTORY_CACHE,
+        help=f"raw response cache (default: {DEFAULT_HISTORY_CACHE})",
+    )  # fmt: skip
+    kh.add_argument(
+        "--pause", type=float, default=0.25, help="seconds between requests (default: 0.25)"
+    )
+    kh.add_argument(
+        "--strike-type", dest="strike_types", action="append", default=None,
+        choices=["greater", "greater_or_equal", "less", "less_or_equal", "between"],
+        help="only markets of this strike type, e.g. less = the lowest bracket (repeatable;"
+        " default: all)",
+    )  # fmt: skip
+
+    stl = cmds.add(sub, "settle", "check Kalshi's settlements against independent readings")
+    stl_sub = stl.add_subparsers(dest="action", required=True)
+    sv = with_db(cmds.add(stl_sub, "verify", (
+        "compare each daily temperature market's Kalshi result with the NWS climate report"
+    ), "settle"))  # fmt: skip
+    sv.add_argument("--tickers", type=Path, help="file with one market ticker per line")
+    sv.add_argument(
+        "--from-pnl", nargs="+", type=Path, default=[], metavar="FILE",
+        help="Kalshi realized-PnL CSVs: check their weather tickers, show their P&L",
+    )  # fmt: skip
+    sv.add_argument(
+        "--report", type=Path, default=Path("reports/settlement_disagreements.csv"),
+        help="CSV of every market needing review (default: reports/settlement_disagreements.csv)",
+    )  # fmt: skip
+    sv.add_argument(
+        "--pause", type=float, default=1.0, help="seconds between requests to IEM (default: 1)"
+    )
+
+    bf = cmds.add(sub, "backfill", "archived forecasts fetched after the fact (approximate)")
+    bf_sub = bf.add_subparsers(dest="action", required=True)
+    bff = with_db(cmds.add(bf_sub, "forecasts", (
+        "store archived model-run forecasts for traded markets, known_at = run + lag"
+    ), "backfill"))  # fmt: skip
+    bff_in = bff.add_mutually_exclusive_group()
+    bff_in.add_argument(
+        "--from-db", type=Path, metavar="DB",
+        help="markets = the manual lots in this database (default: --db's own lots)",
+    )  # fmt: skip
+    bff_in.add_argument("--tickers", type=Path, help="file with one market ticker per line")
+    bff.add_argument(
+        "--sources", nargs="+", default=None, metavar="SOURCE",
+        help="iem_mos_gfs iem_mos_nam iem_mos_nbs openmeteo_ecmwf_ifs openmeteo_gfs_global"
+        " (default: all but openmeteo_gfs_global)",
+    )  # fmt: skip
+    bff.add_argument(
+        "--lookback", type=int, default=2, help="days of runs before each market day (default: 2)"
+    )
+    bff.add_argument("--cache", type=Path, help="directory to cache raw responses in")
+    bfc = with_db(cmds.add(bf_sub, "coverage", (
+        "which backfilled sources had a forecast before each manual entry"
+    ), "backfill"))  # fmt: skip
+    bfc.add_argument(
+        "--report", type=Path, default=Path("reports/forecast_coverage.csv"),
+        help="CSV, one row per entry (default: reports/forecast_coverage.csv)",
+    )  # fmt: skip
+
+    ser = cmds.add(sub, "series", "Kalshi series and what the portfolios cover")
+    ser_sub = ser.add_subparsers(dest="action", required=True)
+    unc = with_dir(cmds.add(ser_sub, "uncovered", (
+        "series matching a prefix with open markets that no strategy trades (exit 1 if any)"
+    ), "series"))  # fmt: skip
+    unc.add_argument(
+        "--prefix", action="append", required=True,
+        help="series ticker prefix (repeatable), e.g. KXHIGH --prefix KXLOWT",
+    )  # fmt: skip
+
+    hist = cmds.add(sub, "history", (
+        "replay and sweep over a Kalshi history file (nem import kalshi-history)"
+    ))  # fmt: skip
+    hist_sub = hist.add_subparsers(dest="action", required=True)
+
+    def with_history(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        with_dir(p)
+        p.add_argument(
+            "--data", type=Path, default=DEFAULT_HISTORY_DB,
+            help=f"history database (default: {DEFAULT_HISTORY_DB})",
+        )  # fmt: skip
+        p.add_argument(
+            "--step", type=int, default=1, help="minutes between replayed ticks (default: 1)"
+        )
+        return p
+
+    hr = with_history(cmds.add(hist_sub, "replay", (
+        "replay portfolios over the markets dated in a period; per trade, date, city, exit"
+    ), "history"))  # fmt: skip
+    hr.add_argument("portfolios", nargs="*", help="portfolio names (default: all in --dir)")
+    hr.add_argument("--from", dest="start", type=date.fromisoformat, required=True)
+    hr.add_argument("--to", dest="end", type=date.fromisoformat, required=True)
+    hs = with_history(cmds.add(hist_sub, "suggest", (
+        "sweep a few settings of every strategy of a portfolio on train dates; check once on"
+        " later test dates"
+    ), "history"))  # fmt: skip
+    hs.add_argument("portfolio")
+    hs.add_argument(
+        "--grid", type=_grid_arg, action="append", required=True, metavar="PATH=V1,V2,...",
+        help="setting and values (repeatable); applied to every strategy, null = off",
+    )  # fmt: skip
+    for flag in ("--train-from", "--train-to", "--test-from", "--test-to"):
+        hs.add_argument(flag, type=date.fromisoformat, required=True)
+    hs.add_argument(
+        "--min-trades", type=int, default=30, help="fewer trades than this counts as unknown"
+    )
 
     hlp = cmds.add(sub, "help", "list commands, or show every option of one: nem help run")
     hlp.add_argument("topic", nargs="*", help="a command, e.g. run or portfolio new")
@@ -329,10 +503,52 @@ def cmd_strategy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _series_fees(series: str) -> "SeriesFees":
+    """One public GET /series/{series}, for strategies whose maker rate is null."""
+    from nem.market.kalshi import KalshiClient
+
+    client = KalshiClient("prod")
+    try:
+        return client.series_fees(series)
+    finally:
+        client.close()
+
+
+def _public_client() -> "KalshiClient":
+    from nem.market.kalshi import KalshiClient
+
+    return KalshiClient("prod")
+
+
+def cmd_series(args: argparse.Namespace) -> int:
+    from nem.market.coverage import uncovered
+
+    used = {s.series for p in _load(args.dir) for s in p.strategies}
+    client = _public_client()
+    try:
+        found = uncovered(client, args.prefix, used)
+    finally:
+        client.close()
+    if not found:
+        print(f"every open {', '.join(args.prefix)} series is covered")
+        return 0
+    print(f"{len(found)} open series not traded by any portfolio in {args.dir}/:")
+    for u in found:
+        note = "" if u.mapped else "  (no station mapping: nem.settle.stations)"
+        print(
+            f"  {u.series:<14} {u.open_markets:>3} open  {u.settlement or '?':<20} {u.title}{note}"
+        )
+    print("Read each series' settlement rules before adding it (AGENTS.md).")
+    return 1
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     from nem.engine.runtime import build_feeds, build_strategies
+    from nem.market.fees import resolve_fees
 
-    portfolios = _load(args.dir)
+    # only null maker rates are looked up here (taker rates are at `nem run` start), so
+    # validating portfolios without take-profits stays offline
+    portfolios = resolve_fees(_load(args.dir), _series_fees, taker=False)
     strategies = build_strategies(portfolios)
     build_feeds(portfolios)
     for p in portfolios:
@@ -352,17 +568,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     from nem.core.config import ConfigError, load_portfolios
     from nem.engine.runner import Runner, run_live
     from nem.engine.runtime import BuildError
+    from nem.market.fees import resolve_fees
     from nem.market.kalshi import KalshiClient
     from nem.market.recorder import Recorder
     from nem.market.source import KalshiSource, ReplaySource, Tick
     from nem.store import Store
 
     directory: Path = args.dir
-    portfolios = _load(directory)
     db: Path = args.db
     db.parent.mkdir(parents=True, exist_ok=True)
     clock = SystemClock()
     client = KalshiClient("prod")  # market data is always real; orders are paper
+    # null fee rates come from each series' fee schedule; unreadable = refuse to start
+    try:
+        portfolios = resolve_fees(_load(directory), client.series_fees)
+    except BaseException:
+        client.close()
+        raise
     extra: list[str] = args.record_series or []
     with Store(db) as store:
         source = KalshiSource(client, clock, depth=args.depth)
@@ -379,7 +601,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             if current != signature:
                 signature = current
                 try:
-                    runner.reload(load_portfolios(directory))
+                    edited = resolve_fees(load_portfolios(directory), client.series_fees)
+                    runner.reload(edited)
                     log.info("reloaded portfolios: trading %s", ", ".join(runner.series))
                 except (ConfigError, BuildError) as e:
                     log.error("portfolio edit rejected, still running the old config: %s", e)
@@ -454,14 +677,81 @@ def cmd_resume(args: argparse.Namespace) -> int:
     return 0
 
 
+def _describe(t: "Trade") -> str:
+    state = "open" if t.won is None else f"{'won' if t.won else 'lost'} {t.realized_pnl or 0:+.2f}"
+    return f"{t.portfolio}/{t.strategy} {t.ticker} ({t.side} x{t.qty}, {state})"
+
+
+def cmd_trade(args: argparse.Namespace) -> int:
+    from nem.store import Store
+
+    if args.action == "list":
+        with Store(args.db) as store:
+            if args.excluded:
+                trades = store.excluded_trades(args.portfolio)
+            else:
+                settled = store.settled_trades(portfolio=args.portfolio)
+                trades = [*settled, *store.open_trades(portfolio=args.portfolio)]
+        if not trades:
+            print("No excluded trades." if args.excluded else "No trades.")
+            return 0
+        n = sum(1 for t in trades if t.excluded)
+        print(f"{len(trades)} trades, {n} excluded (left out of statistics and money):")
+        for t in trades:
+            when = f"{t.excluded_at:%Y-%m-%d %H:%M} UTC" if t.excluded_at else ""
+            flag = f"  excluded {when}: {t.exclude_reason}" if t.excluded else ""
+            print(f"  {_describe(t)}{flag}")
+        return 0
+    if args.portfolio is not None:
+        _check_scope(
+            args.portfolio if args.strategy is None else f"{args.portfolio}/{args.strategy}",
+            args.dir,
+        )
+    with Store(args.db) as store:
+        found = store.trades_for_ticker(args.ticker, args.portfolio, args.strategy)
+        if args.action == "include":
+            found = [t for t in found if t.excluded]
+        if not found:
+            what = "excluded trade" if args.action == "include" else "trade"
+            narrowed = "/".join(x for x in (args.portfolio, args.strategy) if x)
+            print(
+                f"error: no {what} on {args.ticker}" + (f" in {narrowed}" if narrowed else ""),
+                file=sys.stderr,
+            )
+            return 1
+        if len(found) > 1:
+            names = ", ".join(f"{t.portfolio}/{t.strategy}" for t in found)
+            print(
+                f"error: {args.ticker} was traded by {names}; pick one with --portfolio"
+                " and/or --strategy",
+                file=sys.stderr,
+            )
+            return 1
+        (t,) = found
+        if args.action == "include":
+            store.set_excluded(t, None, None)
+            print(f"Included {_describe(t)} again")
+            return 0
+        store.set_excluded(t, args.reason, datetime.now(UTC))
+    verb = "Updated the reason for" if t.excluded else "Excluded"
+    print(
+        f"{verb} {_describe(t)}: {args.reason}. Left out of statistics, P&L, equity and"
+        " risk limits. Undo: nem trade include"
+    )
+    return 0
+
+
 def cmd_replay(args: argparse.Namespace) -> int:
     import tempfile
 
     from nem.core.clock import ManualClock
     from nem.engine.runner import Runner
+    from nem.history.db import is_history_db
     from nem.market.source import ReplaySource
     from nem.store import Store
 
+    if is_history_db(args.data):
+        raise SystemExit(f"{args.data} is a history file (changed quotes only); use nem history")
     portfolios = _load(args.dir)
     with Store(args.data) as data:
         source = ReplaySource(data, args.start, args.end)
@@ -553,9 +843,12 @@ def cmd_export(args: argparse.Namespace) -> int:
 def _reports(
     store: "Store", portfolios: "list[PortfolioConfig]", now: datetime, args: argparse.Namespace
 ) -> "list[PortfolioReport]":
-    from nem.stats.report import build_report
+    """Every portfolio file's report, then imported manual portfolios (read-only)."""
+    from nem.stats.report import build_report, manual_reports
 
-    return [build_report(store, p, now, args.edge, args.alpha, args.power) for p in portfolios]
+    reports = [build_report(store, p, now, args.edge, args.alpha, args.power) for p in portfolios]
+    names = [p.name for p in portfolios]
+    return reports + manual_reports(store, now, names, args.edge, args.alpha, args.power)
 
 
 def _render(store: "Store", portfolios: "list[PortfolioConfig]", now: datetime) -> str:
@@ -568,8 +861,12 @@ def cmd_summary(args: argparse.Namespace) -> int:
     from nem.stats.report import SCHEMA_VERSION, render_all, report_data
     from nem.store import Store
 
+    directory: Path = args.dir
+    has_files = directory.is_dir() and any(directory.glob("*.yaml"))
     with Store(args.db) as store:
-        reports = _reports(store, _load(args.dir), datetime.now(UTC), args)
+        reports = _reports(store, _load(directory) if has_files else [], datetime.now(UTC), args)
+    if not reports:
+        raise SystemExit(f"no portfolios in {directory}/; create one with `nem init`")
     if args.json:
         data = {"schema_version": SCHEMA_VERSION, "portfolios": [report_data(r) for r in reports]}
         print(json.dumps(data, indent=2))
@@ -615,7 +912,8 @@ def cmd_report(args: argparse.Namespace) -> int:
             print(render_all(reports))
             if not args.no_publish:
                 for report in reports:
-                    for reporter in reporters[report.portfolio.name]:
+                    # imported manual portfolios have no reporters: summary.json only
+                    for reporter in reporters.get(report.portfolio.name, []):
                         try:
                             log.info("published %s", reporter.publish(report))
                         except Exception as e:
@@ -658,6 +956,85 @@ def _write_json_reports(
         tmp.replace(target)  # readers never see a half-written file
 
 
+def cmd_import_history(args: argparse.Namespace) -> int:
+    from nem.history.db import HistoryDb, is_history_db
+    from nem.history.fetch import HistoryClient, import_history
+    from nem.store import Store
+
+    db: Path = args.db
+    if db.exists() and not is_history_db(db):
+        with Store(db) as existing:
+            has_data = next(iter(existing.iter_snapshots()), None) is not None
+        if has_data:
+            raise SystemExit(f"{db} holds recorded data; history goes in its own file")
+    if args.start > args.end:
+        raise SystemExit("--from must not be after --to")
+    db.parent.mkdir(parents=True, exist_ok=True)
+    client = HistoryClient.create(args.cache, args.pause)
+    try:
+        with HistoryDb(db) as hdb:
+            res = import_history(
+                client, hdb, args.series, args.start, args.end, datetime.now(UTC),
+                progress=lambda m: print(m, flush=True), strike_types=args.strike_types,
+            )  # fmt: skip
+            counts = hdb.counts()
+    finally:
+        client.close()
+    print(
+        f"{res.imported} markets imported ({res.skipped_existing} already there) of"
+        f" {res.markets_in_window} in {args.start}..{args.end}; {res.candles} candles ->"
+        f" {res.snapshots} snapshots, {res.prints} trade prints; {res.unsettled} without a"
+        f" yes/no result; {client.requests} requests, {client.cache_hits} cached"
+    )
+    print(f"{db}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+    print("provenance: historical_candles (top of book per minute, no depth)")
+    for line in res.problems[:20]:
+        print(f"  {line}")
+    if res.problems:
+        print(f"  ({len(res.problems)} markets failed; run again to retry them)")
+        return 1
+    return 0
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    import re
+
+    if args.source == "kalshi-history":
+        return cmd_import_history(args)
+
+    from nem.core.config import NAME_PATTERN
+    from nem.manual import ManualImportError, import_kalshi_pnl, render_import
+    from nem.stats.report import build_manual_report, render_text
+    from nem.store import Store
+
+    name: str = args.portfolio
+    if not re.match(NAME_PATTERN, name):
+        raise SystemExit(f"portfolio name {name!r} must be lowercase letters, digits and _")
+    directory: Path = args.dir
+    if (directory / f"{name}.yaml").exists():
+        raise SystemExit(f"{directory / name}.yaml exists; imported history needs its own name")
+    if args.start is not None and args.end is not None and args.start > args.end:
+        raise SystemExit("--from must not be after --to")
+    db: Path = args.db
+    db.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC)
+    with Store(db) as store:
+        try:
+            result = import_kalshi_pnl(
+                store, args.files, now, args.activity, args.start, args.end,
+                args.include_non_weather, name,
+            )  # fmt: skip
+        except ManualImportError as e:
+            print(f"error: import rejected, nothing written. {e}", file=sys.stderr)
+            return 1
+        print(render_import(result, args.start, args.end))
+        report = build_manual_report(store, name, now)
+    if report is not None:
+        print()
+        print(render_text(report))
+    return 0
+
+
 def cmd_record(args: argparse.Namespace) -> int:
     from nem.market.kalshi import KalshiClient
     from nem.market.recorder import Recorder
@@ -680,6 +1057,155 @@ def cmd_record(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_settle(args: argparse.Namespace) -> int:
+    from nem.market.kalshi import KalshiClient
+    from nem.settle.observed import Iem
+    from nem.settle.verify import (
+        is_weather,
+        pnl_by_ticker,
+        render_counts,
+        tickers_from_file,
+        verify,
+        write_report,
+    )  # fmt: skip
+    from nem.store import Store
+
+    tickers: list[str] = []
+    if args.tickers:
+        tickers += tickers_from_file(args.tickers)
+    pnl = pnl_by_ticker(args.from_pnl) if args.from_pnl else None
+    if pnl is not None:
+        tickers += list(pnl)
+    db: Path = args.db
+    db.parent.mkdir(parents=True, exist_ok=True)
+    with Store(db) as store:
+        if not args.tickers and pnl is None:
+            tickers = store.settlement_check_candidates()
+        weather = sorted({t for t in tickers if is_weather(t)})
+        if not weather:
+            print("no KXHIGH*/KXLOW* tickers to check (use --tickers or --from-pnl)")
+            return 1
+        print(f"checking {len(weather)} markets (Kalshi public API, IEM)...", flush=True)
+        kalshi, iem = KalshiClient("prod"), Iem(pause=args.pause)
+        try:
+            checks = verify(weather, kalshi.market_detail, iem, datetime.now(UTC))
+        finally:
+            kalshi.close()
+            iem.close()
+        store.save_settlement_checks(checks)
+    rows = write_report(args.report, checks, pnl)
+    print(render_counts(checks))
+    print(f"{rows} markets need review -> {args.report}")
+    print("Money questions: the realized-PnL file. Strategy replay: derived_result.")
+    return 0
+
+
+def cmd_backfill(args: argparse.Namespace) -> int:
+    from nem.backfill.coverage import render, write_csv
+    from nem.backfill.run import backfill, coverage_for, manual_entries, targets_for
+    from nem.backfill.sources import DEFAULT_SOURCES, ArchiveClient
+    from nem.settle.verify import is_weather, tickers_from_file
+    from nem.store import Store
+
+    db: Path = args.db
+    db.parent.mkdir(parents=True, exist_ok=True)
+    if args.action == "coverage":
+        with Store(db) as store:
+            rows = coverage_for(store)
+            sources = sorted({s for r in store.backfill_rows() for s in [r.source]})
+        if not rows:
+            print("no manual entries in the database (nem import kalshi-pnl first)")
+            return 1
+        write_csv(args.report, rows, sources)
+        print(render(rows, sources))
+        print(f"{len(rows)} entries -> {args.report}")
+        return 0
+    entries = []
+    if args.tickers:
+        tickers = tickers_from_file(args.tickers)
+    else:
+        with Store(args.from_db or db) as src:
+            entries = manual_entries(src)
+        tickers = [e.ticker for e in entries]
+    targets = targets_for([t for t in tickers if is_weather(t)], entries)
+    if not targets:
+        print("no mapped KXHIGH*/KXLOW* markets (use --tickers or --from-db)")
+        return 1
+    sources: list[str] = args.sources or list(DEFAULT_SOURCES)
+    print(f"backfilling {len(targets)} station-days from {', '.join(sources)}...", flush=True)
+    client = ArchiveClient(args.cache)
+    try:
+        res = backfill(client, targets, sources, datetime.now(UTC), args.lookback)
+    finally:
+        client.close()
+    with Store(db) as store:
+        store.save_backfill(res.rows)
+    print(f"{len(res.rows)} rows stored (provenance=backfill); {client.requests} requests,"
+          f" {client.cache_hits} cached")  # fmt: skip
+    for line in res.problems[:20] + res.invalid[:20]:
+        print(f"  {line}")
+    if res.problems or res.invalid:
+        print(f"  ({len(res.problems)} unavailable runs, {len(res.invalid)} rows rejected)")
+    return 0
+
+
+def cmd_history(args: argparse.Namespace) -> int:
+    from nem.backtest.suggest import render_suggestion, suggest
+    from nem.history.backtest import (
+        DatePeriod,
+        expand_portfolio,
+        labels,
+        period_report,
+        render_period,
+        replay,
+        sweep,
+    )
+    from nem.history.db import HistoryDb, is_history_db
+    from nem.store import Store
+
+    if not is_history_db(args.data):
+        raise SystemExit(f"{args.data}: not a history file (nem import kalshi-history)")
+    logging.getLogger("nem.engine").setLevel(logging.WARNING)
+    logging.getLogger("nem.engine.step").setLevel(logging.WARNING)
+    step = timedelta(minutes=args.step)
+    portfolios = _load(args.dir)
+    with HistoryDb(args.data) as db:
+        if args.action == "replay":
+            chosen = [p for p in portfolios if not args.portfolios or p.name in args.portfolios]
+            if not chosen:
+                raise SystemExit(f"no matching portfolios in {args.dir}/")
+            period = DatePeriod(args.start, args.end)
+            with Store() as results:
+                replay(db, chosen, period, results, step=step)
+                for p in chosen:
+                    print(render_period(period_report(results, p, period, p.name)))
+                    print()
+            return 0
+        base = next((p for p in portfolios if p.name == args.portfolio), None)
+        if base is None:
+            raise SystemExit(f"no portfolio {args.portfolio!r} in {args.dir}/")
+        pairs: list[tuple[str, list[ParamValue]]] = args.grid
+        grid: Grid = dict(pairs)
+        train = DatePeriod(args.train_from, args.train_to)
+        test = DatePeriod(args.test_from, args.test_to)
+        if test.start <= train.end:
+            raise SystemExit("the test period must start after the train period ends")
+        print(f"{labels([base])} train {train.start}..{train.end}, test {test.start}..{test.end}")
+        results = sweep(db, base, grid, [train, test], step=step)
+        s = suggest(grid, results[train], results[test], min_trades=args.min_trades)
+        print(render_suggestion(s, grid))
+        if s.variant is None:
+            return 0
+        print("\nVerdicts are capped: a backtest can reject an idea, not confirm it.\n")
+        variant = next(p for v, p in expand_portfolio(base, grid) if v.name == s.variant.name)
+        for title, period in (("train (chosen variant)", train), ("test (once)", test)):
+            with Store() as out:
+                replay(db, [variant], period, out, step=step)
+                print(render_period(period_report(out, variant, period, title)))
+                print()
+    return 0
+
+
 COMMANDS = {
     "init": cmd_init,
     "portfolio": cmd_portfolio,
@@ -693,9 +1219,15 @@ COMMANDS = {
     "status": cmd_status,
     "halt": cmd_halt,
     "resume": cmd_resume,
+    "trade": cmd_trade,
     "demo": cmd_demo,
     "export": cmd_export,
+    "import": cmd_import,
+    "settle": cmd_settle,
     "record": cmd_record,
+    "backfill": cmd_backfill,
+    "history": cmd_history,
+    "series": cmd_series,
 }
 
 

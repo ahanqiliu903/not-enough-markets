@@ -1,0 +1,28 @@
+# Example: the market gates on a daily-high series. Only the inner brackets (strike type
+# `between`), entered only in a window anchored on the market date in the settling
+# station's local time. Settings are illustrative round numbers, not tuned on any data.
+# Paper only.
+#
+# - strike_filter: drop every market whose strike type isn't listed.
+# - market_day_window: [from, until) in local clock time (DST-aware); days count from the
+#   market date (-1 = the day before). Quote the times: YAML reads an unquoted 12:00 as
+#   the number 720, which the gate rejects.
+name: market_gates
+mode: paper
+starting_balance: 1000
+check_every: 5m
+risk:
+  max_city_allocation: 50
+strategies:
+  - name: aus_inner_brackets
+    series: KXHIGHAUS
+    signal:
+      type: extreme_favorite
+      threshold: 0.8
+      min_edge: 0.01
+      priors: {yes: {wins: 85, n: 100}, no: {wins: 85, n: 100}}
+    gates:
+      - {type: max_entry_price, value: 0.9}
+      - {type: strike_filter, strike_types: [between]}
+      - {type: market_day_window, from_day: 0, from_time: "06:00", until_day: 0, until_time: "12:00"}
+    sizing: {type: fixed, contracts: 5}

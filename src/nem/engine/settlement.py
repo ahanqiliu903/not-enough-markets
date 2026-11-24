@@ -25,7 +25,8 @@ def settle_due(
     now: datetime,
     on_settle: Callable[[Trade], None] | None = None,
 ) -> list[Trade]:
-    """Settle every open trade whose market has closed and has a known result."""
+    """Settle every open trade whose market has closed and has a known result, and learn
+    from every exited trade whose market has (`learn_exits`). Returns the settled trades."""
     settled: list[Trade] = []
     for t in store.trades_due(now):
         result = source.result(t.ticker, now)
@@ -41,7 +42,38 @@ def settle_due(
         settled.append(done)
         if on_settle is not None:
             on_settle(done)
+    learn_exits(store, source, now, on_settle)
     return settled
+
+
+def learn_exits(
+    store: Store,
+    source: MarketSource,
+    now: datetime,
+    on_settle: Callable[[Trade], None] | None = None,
+) -> list[Trade]:
+    """Learn from trades closed early by an exit, once their market's result is known at
+    `now`: bump the side's learned count with whether it won *at settlement* and call
+    `on_settle`, exactly once per trade, as for a trade held to settlement. The trade
+    handed to `on_settle` keeps its exit P&L and exit time; only `won` is the settlement
+    outcome. Returns those trades, in close-time order."""
+    learned: list[Trade] = []
+    for t in store.learning_due(now):
+        result = source.result(t.ticker, now)
+        if result is None:
+            continue
+        won = result.result == t.side
+        if not store.learn_exit(t, won, result.settled_at):
+            continue
+        log.info(
+            "%s/%s %s: exited trade's side %s at settlement",
+            t.portfolio, t.strategy, t.ticker, "won" if won else "lost",
+        )  # fmt: skip
+        done = replace(t, won=won)
+        learned.append(done)
+        if on_settle is not None:
+            on_settle(done)
+    return learned
 
 
 def _midnights(after: datetime, upto: datetime) -> list[datetime]:

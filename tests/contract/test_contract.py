@@ -42,6 +42,8 @@ def coerce(value: str, schema: dict[str, Any]) -> object:
     types = cast("list[str]", declared if isinstance(declared, list) else [declared])
     if value == "" and "null" in types:
         return None
+    if "boolean" in types and value.lower() in ("true", "false"):
+        return value.lower() == "true"
     try:
         if "integer" in types:
             return int(value)

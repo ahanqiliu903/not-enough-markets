@@ -9,7 +9,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Snapshot, TradeColumn, TradeResult, TradeRow, TradesFilter, TradesPage } from "@shared/data";
 import { EmptyState } from "../../components/states";
-import { int, signClass, signedUsd, ts, usd } from "../../data/format";
+import { EXCLUDED_NOTE, excludedFlag, int, MARK_LABEL, noBidFlag, num, signClass, signedUsd, ts, usd } from "../../data/format";
 import { DataErrors, DATA_COMMANDS, SourceGate } from "../../data/states";
 import { nem, queryKeys } from "../../lib/api";
 import { useNav } from "../../state/nav";
@@ -46,7 +46,24 @@ const TRADE_COLS: readonly Col[] = [
   { id: "fee_usd", label: "Fee", width: 64, num: true, cell: (r) => usd(r.fee_usd) },
   { id: "cost_per_contract_cents", label: "Cost c", width: 70, num: true, cell: (r) => r.cost_per_contract_cents.toFixed(2) },
   { id: "result", label: "Result", width: 64, cell: (r) => r.result, tone: (r) => (r.result === "won" ? "up" : r.result === "lost" ? "down" : "dim") },
+  { id: "excluded", label: "Statistics", width: 220, cell: (r) => excludedFlag(r) || "counted", tone: (r) => (r.excluded === true ? "excluded-flag" : "dim") },
   { id: "pnl_usd", label: "P&L", width: 80, num: true, cell: (r) => signedUsd(r.pnl_usd), tone: (r) => signClass(r.pnl_usd) },
+  { id: "unrealized_pnl_usd", label: "Unrealized", width: 90, num: true, cell: (r) => signedUsd(r.unrealized_pnl_usd), tone: (r) => signClass(r.unrealized_pnl_usd) },
+  { id: "mark_value_usd", label: "Mark value", width: 84, num: true, cell: (r) => usd(r.mark_value_usd) },
+  { id: "mark_bid_cents", label: "Mark c", width: 64, num: true, cell: (r) => num(r.mark_bid_cents, 1) },
+  {
+    id: "mark_contracts",
+    label: "Marked qty",
+    width: 250,
+    num: true,
+    cell: (r) => {
+      const flag = noBidFlag(r.mark_contracts, r.contracts);
+      return flag ? `${int(r.mark_contracts)} · ${flag}` : int(r.mark_contracts);
+    },
+    tone: (r) => (noBidFlag(r.mark_contracts, r.contracts) ? "down" : ""),
+  },
+  { id: "mark_mid_cents", label: "Mid c", width: 60, num: true, cell: (r) => num(r.mark_mid_cents, 1) },
+  { id: "marked_at", label: "Marked (UTC)", width: 170, cell: (r) => ts(r.marked_at) },
   { id: "settled_at", label: "Settled (UTC)", width: 170, cell: (r) => ts(r.settled_at) },
   { id: "close_time", label: "Close (UTC)", width: 170, cell: (r) => ts(r.close_time) },
   { id: "window_id", label: "Window", width: 190, cell: (r) => r.window_id },
@@ -88,6 +105,7 @@ function Trades({ snapshot }: { snapshot: Snapshot }) {
   const [strategy, setStrategy] = useState(params["strategy"] ?? "");
   const [result, setResult] = useState<"" | TradeResult>("");
   const [text, setText] = useState("");
+  const [hideExcluded, setHideExcluded] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([{ id: "opened_at", desc: true }]);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const debouncedText = useDebounced(text, 120);
@@ -104,8 +122,9 @@ function Trades({ snapshot }: { snapshot: Snapshot }) {
     if (strategy !== "") f.strategy = strategy;
     if (result !== "") f.result = result;
     if (debouncedText.trim() !== "") f.text = debouncedText.trim();
+    if (hideExcluded) f.hideExcluded = true;
     return f;
-  }, [portfolio, strategy, result, debouncedText]);
+  }, [portfolio, strategy, result, debouncedText, hideExcluded]);
   const sort = sorting[0];
   const base = useMemo(
     () => ({ ...filter, ...(sort !== undefined ? { sort: { column: sort.id as TradeColumn, dir: sort.desc ? ("desc" as const) : ("asc" as const) } } : {}) }),
@@ -222,6 +241,10 @@ function Trades({ snapshot }: { snapshot: Snapshot }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
+        <label className="toggle" title={`Hide trades ${EXCLUDED_NOTE}`}>
+          <input type="checkbox" checked={hideExcluded} onChange={(e) => setHideExcluded(e.target.checked)} />
+          Hide excluded
+        </label>
         <span className="spacer" />
         <span className="dim" data-testid="trade-count">
           {int(total)} of {int(totalTrades)} trades
@@ -231,6 +254,7 @@ function Trades({ snapshot }: { snapshot: Snapshot }) {
         </button>
         {exportMsg !== null && <span className="dim" role="status">{exportMsg}</span>}
       </div>
+      <p className="dim trades-note">Mark columns (open trades): {MARK_LABEL}, from the engine; contracts without bids count at $0 (flagged "no bids"); empty when settled, stale or closed. Muted rows are {EXCLUDED_NOTE}.</p>
       <div className="blotter" ref={scrollRef} role="table" aria-label="Trades" aria-rowcount={total + 1}>
         <div className="blotter-head" role="row" style={{ gridTemplateColumns: gridTemplate }}>
           {table.getHeaderGroups()[0]?.headers.map((h) => {
@@ -259,7 +283,7 @@ function Trades({ snapshot }: { snapshot: Snapshot }) {
                 key={it.key}
                 role="row"
                 aria-rowindex={it.index + 2}
-                className="blotter-row"
+                className={`blotter-row${r?.excluded === true ? " excluded" : ""}`}
                 style={{ transform: `translateY(${it.start}px)`, gridTemplateColumns: gridTemplate }}
               >
                 {TRADE_COLS.map((c) => (

@@ -54,3 +54,50 @@ export function signClass(v: number | null | undefined): string {
   if (!finite(v) || v === 0) return "";
   return v > 0 ? "up" : "down";
 }
+
+/** Label for the engine's mark-to-market values (contract 1.1), shown wherever they are. */
+export const MARK_LABEL = "liquidation value at best bids, after exit fee";
+
+/** "+$1.20", "+$1.20 (2 unmarked)", "-$4.50 (5 no bids at $0)"; NA when the engine gave no value. */
+export function unrealized(
+  pnl: number | null | undefined,
+  unmarked: number | null | undefined,
+  noBid?: number | null,
+): string {
+  const v = signedUsd(pnl);
+  if (v === NA) return v;
+  const notes = [
+    ...(finite(unmarked) && unmarked > 0 ? [`${int(unmarked)} unmarked`] : []),
+    ...(finite(noBid) && noBid > 0 ? [`${int(noBid)} no bids at $0`] : []),
+  ];
+  return notes.length > 0 ? `${v} (${notes.join("; ")})` : v;
+}
+
+/**
+ * Flag for an open trade the recorded bids don't fully cover: the engine valued the rest
+ * at $0 (`mark_contracts` < `contracts`). "" when fully covered or unmarked.
+ */
+export function noBidFlag(markContracts: number | null | undefined, contracts: number): string {
+  if (!finite(markContracts) || markContracts >= contracts) return "";
+  return `no bids: ${int(contracts - markContracts)} at $0 (pending loss)`;
+}
+
+/** What excluding a trade means, shown wherever excluded trades are (contract 1.1). */
+export const EXCLUDED_NOTE = "excluded (nem trade exclude): left out of statistics, P&L and equity";
+
+/** "excluded: <reason>" for a trade the engine excluded from statistics; "" when counted. */
+export function excludedFlag(r: { excluded: boolean | null; exclude_reason: string | null }): string {
+  if (r.excluded !== true) return "";
+  return `excluded: ${r.exclude_reason ?? "no reason given"}`;
+}
+
+/** Trades excluded from statistics, e.g. "2"; NA when an older file has no count. */
+export function excludedCount(v: number | null | undefined): string {
+  return finite(v) ? int(v) : NA;
+}
+
+/** Contracts valued at $0 for lack of bids, e.g. "10 (pending loss)"; NA when none known. */
+export function noBidContracts(v: number | null | undefined): string {
+  if (!finite(v)) return NA;
+  return v > 0 ? `${int(v)} (pending loss)` : "0";
+}

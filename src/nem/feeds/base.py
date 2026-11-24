@@ -14,7 +14,7 @@ the fetch time. Use keys to separate several series from one source, e.g.
 from collections.abc import Sequence
 from datetime import datetime
 
-from nem.core.registry import Plugin
+from nem.core.registry import Plugin, PluginParams
 
 Observation = tuple[str, float, datetime]  # (key, value, known_at)
 
@@ -22,3 +22,11 @@ Observation = tuple[str, float, datetime]  # (key, value, known_at)
 class Feed(Plugin):
     def fetch(self, now: datetime) -> Sequence[Observation]:
         raise NotImplementedError
+
+    @classmethod
+    def forecast_model(cls, params: PluginParams) -> str | None:
+        """For forecast feeds: the model it carries, named as in `nem.backfill.SOURCES`
+        (`gfs`, `nbm`, `ecmwf_ifs`, ...), so `ctx.forecasts` never counts one model twice
+        (e.g. a live GFS MOS feed and the `iem_mos_gfs` backfill). None = its own source."""
+        del params
+        return None

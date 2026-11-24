@@ -22,6 +22,8 @@ export type SchemaName =
 
 interface PropertySchema {
   type?: string | string[];
+  /** Contract minor that added the column (e.g. "1.1"); older 1.x files may lack it. */
+  "x-since"?: string;
 }
 
 export interface TableSchema {

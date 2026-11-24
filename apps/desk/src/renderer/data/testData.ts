@@ -33,6 +33,11 @@ export const SUMMARY: SummaryRow = {
   interest_apy: 0.04,
   cash_benchmark_usd: 0.19,
   pnl_vs_cash_usd: 58.95,
+  open_value_usd: 0,
+  unrealized_pnl_usd: 0,
+  open_unmarked: 0,
+  open_no_bid_contracts: 0,
+  excluded_trades: 0,
 };
 
 function strat(o: Partial<StrategyRow> & Pick<StrategyRow, "strategy" | "series" | "verdict">): StrategyRow {
@@ -58,6 +63,11 @@ function strat(o: Partial<StrategyRow> & Pick<StrategyRow, "strategy" | "series"
     trades_to_detect: null,
     trades_to_detect_edge_cents: 2,
     brier: null,
+    open_value_usd: 0,
+    unrealized_pnl_usd: 0,
+    open_unmarked: 0,
+    open_no_bid_contracts: 0,
+    excluded_trades: 0,
     ...o,
   };
 }
@@ -86,6 +96,14 @@ export function trade(i: number, strategy = "btc_edge"): TradeRow {
     settled_at: `2026-10-01T00:${mm}:33Z`,
     result: i % 10 === 0 ? "lost" : "won",
     pnl_usd: i % 10 === 0 ? -4.49 : 0.51,
+    mark_bid_cents: null,
+    mark_mid_cents: null,
+    mark_contracts: null,
+    mark_value_usd: null,
+    unrealized_pnl_usd: null,
+    marked_at: null,
+    excluded: false,
+    exclude_reason: null,
   };
 }
 
@@ -128,6 +146,8 @@ export interface FakeOptions {
   snapshot?: SnapshotResult;
   totalTrades?: number;
   tradesError?: DataError[];
+  /** Row generator for the trades pages (default `trade`). */
+  tradeRow?: (i: number) => TradeRow;
 }
 
 export interface Fake {
@@ -150,7 +170,8 @@ export function fakeApi(o: FakeOptions = {}): Fake {
         calls.trades.push(q);
         if (o.tradesError !== undefined) return Promise.resolve<TradesPage>({ ok: false, errors: o.tradesError });
         const n = Math.max(0, Math.min(q.limit, total - q.offset));
-        const rows = Array.from({ length: n }, (_, i) => trade(q.offset + i));
+        const make = o.tradeRow ?? trade;
+        const rows = Array.from({ length: n }, (_, i) => make(q.offset + i));
         return Promise.resolve<TradesPage>({ ok: true, revision: 1, total, offset: q.offset, rows });
       },
       tradesCsv: () => Promise.resolve({ ok: true, csv: "", rows: 0 }),

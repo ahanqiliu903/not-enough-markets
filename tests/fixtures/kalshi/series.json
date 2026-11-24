@@ -1,0 +1,11 @@
+{
+  "series": {
+    "ticker": "KXBTC15M",
+    "frequency": "fifteen_min",
+    "title": "Bitcoin price up or down in 15 minutes",
+    "category": "Crypto",
+    "fee_type": "quadratic",
+    "fee_multiplier": 1,
+    "settlement_sources": [{"name": "CF Benchmarks", "url": "https://www.cfbenchmarks.com/"}]
+  }
+}

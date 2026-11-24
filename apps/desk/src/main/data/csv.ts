@@ -4,7 +4,7 @@ import { errorField, errorMessage, tableSchema, validator, type SchemaName } fro
 
 /**
  * CSV -> contract rows, with the coercion rules of `tests/contract/test_contract.py`:
- * empty = null (when the schema allows null), integer/number by the schema's declared type,
+ * empty = null (when the schema allows null), integer/number/boolean by the schema's declared type,
  * and unparseable text stays a string so validation reports it.
  */
 
@@ -27,6 +27,11 @@ const FLOAT_WORDS: Record<string, number> = {
 export function coerce(value: string, declared: string | string[] | undefined): unknown {
   const types = declared === undefined ? ["string"] : Array.isArray(declared) ? declared : [declared];
   if (value === "" && types.includes("null")) return null;
+  // the engine writes "true"/"false"; Sheets may turn them into TRUE/FALSE
+  if (types.includes("boolean")) {
+    const v = value.trim().toLowerCase();
+    if (v === "true" || v === "false") return v === "true";
+  }
   if (types.includes("integer")) return INT_RE.test(value) ? Number.parseInt(value, 10) : value;
   if (types.includes("number")) {
     if (FLOAT_RE.test(value)) return Number(value);
@@ -88,7 +93,9 @@ export function parseTable<T>(text: string, file: string, schemaName: SchemaName
     return { rows: null, raw: [], header, errors: [{ kind: "parse", file, message: "file is empty (no header row)" }] };
   }
 
-  const missing = schema.required.filter((c) => !header.includes(c));
+  // Columns added in a minor (`x-since`) read as null when an older 1.x file lacks them.
+  const added = schema.required.filter((c) => !header.includes(c) && schema.properties[c]?.["x-since"] !== undefined);
+  const missing = schema.required.filter((c) => !header.includes(c) && !added.includes(c));
   if (missing.length > 0) {
     return {
       rows: null,
@@ -107,6 +114,10 @@ export function parseTable<T>(text: string, file: string, schemaName: SchemaName
   }
 
   const types = header.map((h) => schema.properties[h]?.type);
+  // A row may stop before trailing `x-since` columns (spreadsheet tools drop trailing empty
+  // cells, and those columns are nullable): the missing cells read as empty.
+  let minCells = header.length;
+  while (minCells > 0 && schema.properties[header[minCells - 1] ?? ""]?.["x-since"] !== undefined) minCells--;
   const validate = validator(schemaName);
   const rows: Record<string, unknown>[] = [];
   const seen = new Map<string, number>();
@@ -116,7 +127,7 @@ export function parseTable<T>(text: string, file: string, schemaName: SchemaName
   for (let i = 0; i < body.length; i++) {
     const cells = body[i] ?? [];
     const rowNo = i + 1;
-    if (cells.length !== header.length) {
+    if (cells.length < minCells || cells.length > header.length) {
       push({
         kind: "parse",
         file,
@@ -130,6 +141,7 @@ export function parseTable<T>(text: string, file: string, schemaName: SchemaName
     for (let c = 0; c < header.length; c++) {
       row[header[c] ?? ""] = coerce(cells[c] ?? "", types[c]);
     }
+    for (const c of added) row[c] = null;
     rows.push(row);
     if (majorOf(row["schema_version"]) !== CONTRACT_MAJOR) {
       push(versionError(file, row["schema_version"], rowNo));

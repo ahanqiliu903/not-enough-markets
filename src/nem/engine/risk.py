@@ -10,6 +10,7 @@ from nem.core.clock import EXCHANGE_TZ
 from nem.core.config import RiskConfig
 from nem.core.context import Context
 from nem.core.types import Decision, Trade
+from nem.settle.stations import lookup
 from nem.stats.metrics import max_drawdown as _max_drawdown
 
 
@@ -48,35 +49,63 @@ def check_limits(
             return block("daily_loss_cap")
     if risk.max_drawdown is not None and max_drawdown(settled) >= risk.max_drawdown:
         return block("max_drawdown")
-    losing = sum(t.realized_pnl or 0.0 for t in settled) < 0
+    counted = [t for t in settled if not t.excluded]  # callers pass none; be safe
+    losing = sum(t.realized_pnl or 0.0 for t in counted) < 0
     n = risk.stop_if_losing_after
-    if n is not None and len(settled) >= n and losing:
+    if n is not None and len(counted) >= n and losing:
         return block("stop_if_losing_after")
     return Decision.ok()
 
 
-def check_risk(ctx: Context, new_cost: float) -> Decision:
+def _city(ticker: str) -> str | None:
+    found = lookup(ticker)
+    return found.station.icao if found is not None else None
+
+
+def check_city_limit(
+    risk: RiskConfig,
+    scope: str,
+    open_trades: Sequence[Trade],
+    ticker: str | None,
+    new_cost: float,
+) -> Decision:
+    """Open cost per station (city) plus this order must stay within `max_city_allocation`.
+    Fails closed when the new market's city is unknown: an unmapped series can't be capped."""
+    cap = risk.max_city_allocation
+    if cap is None:
+        return Decision.ok()
+    city = _city(ticker) if ticker is not None else None
+    if city is None:
+        return Decision.skip(f"risk:{scope}:max_city_allocation:unknown_city")
+    held = sum(t.cost for t in open_trades if _city(t.ticker) == city)
+    if held + new_cost > cap:
+        return Decision.skip(f"risk:{scope}:max_city_allocation:{city}")
+    return Decision.ok()
+
+
+def check_risk(ctx: Context, new_cost: float, ticker: str | None = None) -> Decision:
     try:
         now = ctx.now()
         if new_cost > ctx.cash():
             return Decision.skip("risk:portfolio:insufficient_cash")
+        mine = ctx.open_trades()
+        settled = ctx.settled_positions()  # excluded trades are left out
+        d = check_limits(ctx.strategy.risk, "strategy", mine, settled, new_cost, now)
+        if d.take:
+            d = check_city_limit(ctx.strategy.risk, "strategy", mine, ticker, new_cost)
+        if not d.take:
+            return d
+        everyone = ctx.open_trades(portfolio_wide=True)
         d = check_limits(
-            ctx.strategy.risk,
-            "strategy",
-            ctx.open_trades(),
-            ctx.settled_trades(),
+            ctx.portfolio.risk,
+            "portfolio",
+            everyone,
+            ctx.settled_positions(portfolio_wide=True),
             new_cost,
             now,
         )
         if not d.take:
             return d
-        return check_limits(
-            ctx.portfolio.risk,
-            "portfolio",
-            ctx.open_trades(portfolio_wide=True),
-            ctx.portfolio_settled_trades(),
-            new_cost,
-            now,
-        )
+        return check_city_limit(ctx.portfolio.risk, "portfolio", everyone, ticker, new_cost)
     except Exception as e:  # fail closed
         return Decision.skip(f"risk:error:{type(e).__name__}")

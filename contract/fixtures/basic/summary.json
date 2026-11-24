@@ -18,7 +18,12 @@
         "open_cost_usd": 0,
         "interest_apy": 0.04,
         "cash_benchmark_usd": 0.19,
-        "pnl_vs_cash_usd": 58.95
+        "pnl_vs_cash_usd": 58.95,
+        "open_value_usd": 0.0,
+        "unrealized_pnl_usd": 0.0,
+        "open_unmarked": 0,
+        "open_no_bid_contracts": 0,
+        "excluded_trades": 0
       },
       "strategies": [
         {
@@ -47,6 +52,11 @@
           "trades_to_detect_edge_cents": 9.96,
           "verdict": "edge",
           "brier": 0.0081,
+          "open_value_usd": 0.0,
+          "unrealized_pnl_usd": 0.0,
+          "open_unmarked": 0,
+          "open_no_bid_contracts": 0,
+          "excluded_trades": 0,
           "signal_reasons": {
             "ok: fixed 5": 170
           },
@@ -100,6 +110,11 @@
           "trades_to_detect_edge_cents": 2.0,
           "verdict": "no_edge",
           "brier": 0.2367,
+          "open_value_usd": 0.0,
+          "unrealized_pnl_usd": 0.0,
+          "open_unmarked": 0,
+          "open_no_bid_contracts": 0,
+          "excluded_trades": 0,
           "signal_reasons": {
             "ok: fixed 5": 54
           },
@@ -153,6 +168,11 @@
           "trades_to_detect_edge_cents": 2.36,
           "verdict": "undecided",
           "brier": 0.076,
+          "open_value_usd": 0.0,
+          "unrealized_pnl_usd": 0.0,
+          "open_unmarked": 0,
+          "open_no_bid_contracts": 0,
+          "excluded_trades": 0,
           "signal_reasons": {
             "ok: fixed 5": 170
           },

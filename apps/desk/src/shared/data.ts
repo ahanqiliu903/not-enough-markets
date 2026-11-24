@@ -29,6 +29,23 @@ export interface SummaryRow {
   interest_apy: number | null;
   cash_benchmark_usd: number | null;
   pnl_vs_cash_usd: number | null;
+  /**
+   * Contract 1.1 (null when an older 1.x file lacks them): open positions at liquidation
+   * value (recorded bids, after the exit fee; contracts without bids at $0), summed over
+   * open trades with a fresh book; `open_unmarked` counts the open trades left out (stale,
+   * closed); `open_no_bid_contracts` the contracts valued at $0 because nobody bids.
+   * Engine values, never recomputed.
+   */
+  open_value_usd: number | null;
+  unrealized_pnl_usd: number | null;
+  open_unmarked: number | null;
+  open_no_bid_contracts: number | null;
+  /**
+   * Contract 1.1 (null when an older 1.x file lacks it): excluded trades
+   * (`nem trade exclude`), settled and open. Treated as never taken: left out of every
+   * statistic and money total the engine reports.
+   */
+  excluded_trades: number | null;
 }
 
 export interface StrategyRow {
@@ -57,6 +74,23 @@ export interface StrategyRow {
   trades_to_detect_edge_cents: number;
   verdict: Verdict;
   brier: number | null;
+  /**
+   * Contract 1.1 (null when an older 1.x file lacks them): open positions at liquidation
+   * value (recorded bids, after the exit fee; contracts without bids at $0), summed over
+   * open trades with a fresh book; `open_unmarked` counts the open trades left out (stale,
+   * closed); `open_no_bid_contracts` the contracts valued at $0 because nobody bids.
+   * Engine values, never recomputed.
+   */
+  open_value_usd: number | null;
+  unrealized_pnl_usd: number | null;
+  open_unmarked: number | null;
+  open_no_bid_contracts: number | null;
+  /**
+   * Contract 1.1 (null when an older 1.x file lacks it): excluded trades
+   * (`nem trade exclude`), settled and open. Treated as never taken: left out of every
+   * statistic and money total the engine reports.
+   */
+  excluded_trades: number | null;
 }
 
 export interface TradeRow {
@@ -76,6 +110,24 @@ export interface TradeRow {
   settled_at: string | null;
   result: TradeResult;
   pnl_usd: number | null;
+  /**
+   * Contract 1.1 mark-to-market of an open trade (null when settled, stale, closed, or an
+   * older file): average sale price over the contracts the recorded bids cover, the mid
+   * (reference only), covered contracts, proceeds after the exit fee (contracts beyond
+   * `mark_contracts` have no bids and count at $0), and unrealized P&L.
+   */
+  mark_bid_cents: number | null;
+  mark_mid_cents: number | null;
+  mark_contracts: number | null;
+  mark_value_usd: number | null;
+  unrealized_pnl_usd: number | null;
+  marked_at: string | null;
+  /**
+   * Contract 1.1: excluded (`nem trade exclude`: treated as never taken) and why. Null
+   * (= counted) when an older 1.x file lacks the columns.
+   */
+  excluded: boolean | null;
+  exclude_reason: string | null;
 }
 
 export const TRADE_COLUMNS = [
@@ -95,6 +147,16 @@ export const TRADE_COLUMNS = [
   "settled_at",
   "result",
   "pnl_usd",
+  // contract 1.1: mark-to-market of open trades
+  "mark_bid_cents",
+  "mark_mid_cents",
+  "mark_contracts",
+  "mark_value_usd",
+  "unrealized_pnl_usd",
+  "marked_at",
+  // contract 1.1: excluded from statistics
+  "excluded",
+  "exclude_reason",
 ] as const satisfies readonly (keyof TradeRow)[];
 
 export type TradeColumn = (typeof TRADE_COLUMNS)[number];
@@ -297,6 +359,8 @@ export interface TradesFilter {
   result?: TradeResult;
   /** Case-insensitive substring of ticker, window_id or strategy. */
   text?: string;
+  /** Leave out trades the engine excluded from statistics. */
+  hideExcluded?: boolean;
 }
 
 export interface TradesQuery extends TradesFilter {

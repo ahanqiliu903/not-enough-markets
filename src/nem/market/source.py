@@ -9,10 +9,10 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from itertools import groupby
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from nem.core.clock import Clock, SystemClock
-from nem.core.types import Depth, MarketSnapshot, Settlement
+from nem.core.types import Depth, MarketSnapshot, Settlement, Side
 from nem.market.kalshi import KalshiClient, KalshiMarket
 from nem.store import Store
 
@@ -30,6 +30,17 @@ class MarketSource(Protocol):
 
     def result(self, ticker: str, as_of: datetime) -> Settlement | None:
         """The market's outcome if it was known at `as_of`, else None."""
+        ...
+
+
+@runtime_checkable
+class PrintSource(Protocol):
+    """A source that also has trade prints (the historical archive, nem.history)."""
+
+    def traded_volume(
+        self, ticker: str, side: Side, price: float, after: datetime, until: datetime
+    ) -> float:
+        """Contracts of `side` that traded at or above `price` in (after, until]."""
         ...
 
 

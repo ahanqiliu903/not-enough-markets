@@ -87,6 +87,8 @@ Working with a coding agent? Point it at [AGENTS.md](AGENTS.md): it turns a plai
 
 `uv run nem help` lists every command with its options; `uv run nem help run` shows one in detail. More: `nem portfolio new|list|show`, `nem replay --data data/nem.db` to run portfolios over recorded data, `nem export` to save recordings as a portable file.
 
+Compare against your own manual trading: `nem import kalshi-pnl` loads Kalshi's realized-PnL export as a read-only `manual_baseline` portfolio that `nem summary` reports next to the others ([docs/data-provenance.md](docs/data-provenance.md)).
+
 ### 5. Watch it in the desk
 
 ```bash
@@ -139,16 +141,16 @@ portfolios/
 | Part | Decides | Examples |
 |---|---|---|
 | **signal** | When to enter, which side, at what price. Can read feeds. | `extreme_favorite` (buy the favorite at 90c+) |
-| **gates** | Whether to veto a trade the signal wants. Can read feeds. | `max_entry_price`, `time_in_window` (only the last N minutes), "skip if forecast precipitation > 60%" |
+| **gates** | Whether to veto a trade the signal wants. Can read feeds. | `max_entry_price`, `time_in_window` (only the last N minutes), `city_filter` (allow/exclude weather cities by station), `strike_filter` (only some strike types, e.g. `between` = the inner brackets), `market_day_window` (enter only between local times anchored on the market date, e.g. 06:00 to noon on the day), "skip if forecast precipitation > 60%", forecast gates for temperature markets: `source_agreement` (>= N forecast sources on our side of the strike), `bracket_distance` (forecast >= D degrees from where our side loses), `sky_conditions` (veto on rain chance / cloud cover); see [examples/weather/](examples/weather/forecast_gates.yaml) |
 | **sizing** | How many contracts. | `fixed` (N contracts), `percent` (N% of the portfolio), `kelly` (fractional, always with a contract cap) |
-| **risk** | Hard limits. Always fail closed. | `max_allocation`, `daily_loss_cap`, `max_drawdown`, `max_open_positions`, kill rule ("pause if win rate < break-even after N trades") |
+| **risk** | Hard limits. Always fail closed. | `max_allocation`, `max_city_allocation` (open cost per weather station, see [examples/risk/](examples/risk/city_caps.yaml)), `daily_loss_cap`, `max_drawdown`, `max_open_positions`, kill rule ("pause if win rate < break-even after N trades") |
 
 Strategies can be `active`, `paused` or `retired`. Retired ones keep their history so you can compare old ideas against new ones.
 
 - **Feeds** (external data): anything a market depends on besides its own prices, e.g. a crypto spot price, a commodity price, or a temperature forecast. Every market targets something different, so feeds are plugins too: write one small class per data source and any signal or gate can use it by name.
   - Feed values are **recorded with timestamps**, like market data, so replay sees only what was known at the time. Forecasts also record when they were **issued**, so a backtest can't use a forecast published after the trade.
   - Each feed has a `max_age`. Older data counts as unavailable, and each gate declares whether it then lets trades through or blocks them.
-  - Built in: `coinbase_spot` (crypto spot price) and `nws_forecast` (US daily high/low and precipitation chance from the National Weather Service). Gates that use them: `feed_agrees` (the feed value is on the bet's side of the market's strike, with a margin) and `feed_threshold` (veto outside a range, e.g. precipitation over 60%). See [examples/feeds/](examples/feeds/feeds_example.yaml).
+  - Built in: `coinbase_spot` (crypto spot price), `nws_forecast` (US daily high/low and precipitation chance from the National Weather Service), and model forecasts per weather station for the forecast gates: `iem_mos` (GFS MOS and NBM text, public domain) and `open_meteo_run` (raw ECMWF, Canadian GEM, DWD ICON runs; Open-Meteo's free tier is non-commercial only, so it is opt-in). Sources, terms and independence: [docs/data-provenance.md](docs/data-provenance.md#live-model-forecast-feeds-iem_mos-open_meteo_run). Gates that use them: `feed_agrees` (the feed value is on the bet's side of the market's strike, with a margin) and `feed_threshold` (veto outside a range, e.g. precipitation over 60%). See [examples/feeds/](examples/feeds/feeds_example.yaml).
   - Feeds are predictors, not settlement sources. Kalshi decides every outcome; check each market's rules for what it actually settles on (e.g. temperature markets settle on The Weather Company, not NWS).
 
 Example portfolio file:
@@ -224,6 +226,26 @@ Especially nowadays, it's very easy for them to give optimistic results. The wor
 - Portfolios with `interest_apy` also show **P&L vs simply holding cash** at Kalshi's rate.
 
 Tune the test with `--edge 0.03`, `--alpha`, `--power`.
+
+### Excluding a trade
+
+A trade that shouldn't count as evidence (a bug, a test order, a fill at a bad recorded
+price) can be excluded without deleting it:
+
+```bash
+uv run nem trade exclude KXBTC15M-26OCT071530-30 --reason "fill at a stale price"  # --portfolio/--strategy if ambiguous
+uv run nem trade list --excluded                # every excluded trade, why and when
+uv run nem trade include KXBTC15M-26OCT071530-30  # undo
+```
+
+An excluded trade is treated as **never taken**. It leaves every statistic (win rate, edge,
+intervals, verdict, trades to detect, calibration, the strategy's P&L/ROI/drawdown, the
+`stop_if_losing_after` kill rule, what signals and gates see via `ctx.settled_trades()` and
+`ctx.stat()`) and the money too: realized P&L, equity, cash, open positions, marks and every
+risk limit (`daily_loss_cap`, `max_drawdown`, allocation and position caps). An excluded
+open trade frees its slot and its cash. Reports still list it (`excluded`, `exclude_reason`
+in trades; `excluded_trades` counts) and `nem summary` says "N excluded (M settled, P&L x
+not counted)". Exclude for a reason you'd state up front, never to improve a verdict.
 
 ## Reports (CSV, JSON, Google Sheets)
 

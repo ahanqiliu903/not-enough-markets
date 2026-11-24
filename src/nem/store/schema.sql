@@ -86,6 +86,8 @@ CREATE TABLE trades (
     won          INTEGER,                -- NULL until settled
     realized_pnl REAL,
     settled_at   TEXT,
+    excluded_at    TEXT,               -- `nem trade exclude`: out of every statistic, still
+    exclude_reason TEXT,               -- in money (P&L, equity, risk limits); NULL = counted
     PRIMARY KEY (portfolio, strategy, window_id)
 );
 CREATE INDEX trades_settled_at ON trades (settled_at);
@@ -130,3 +132,93 @@ CREATE TABLE halts (                   -- kill switch; see `nem halt` / `nem res
     reason  TEXT NOT NULL,
     ts      TEXT NOT NULL
 );
+
+CREATE TABLE manual_lots (             -- your own manual trades (nem import kalshi-pnl); history
+    portfolio        TEXT NOT NULL,    -- only, never traded by the engine
+    strategy         TEXT NOT NULL,
+    lot_key          TEXT NOT NULL,    -- stable id of the source row; re-imports add nothing
+    provenance       TEXT NOT NULL DEFAULT 'manual_import' CHECK (provenance = 'manual_import'),
+    ticker           TEXT NOT NULL,
+    side             TEXT NOT NULL CHECK (side IN ('yes', 'no')),
+    qty              REAL NOT NULL CHECK (qty > 0),   -- can be fractional
+    entry_price      REAL NOT NULL,
+    exit_price       REAL NOT NULL,    -- 0.99 sell, other sell, or settlement at 1.00 / 0.00
+    open_fees        REAL NOT NULL,
+    close_fees       REAL NOT NULL,
+    pnl_without_fees REAL NOT NULL,
+    realized_pnl     REAL NOT NULL,    -- Kalshi's realized P&L after fees: truth for money
+    opened_at        TEXT NOT NULL,
+    closed_at        TEXT NOT NULL,
+    source_file      TEXT NOT NULL,
+    source_line      INTEGER NOT NULL,
+    imported_at      TEXT NOT NULL,
+    PRIMARY KEY (portfolio, lot_key)
+);
+
+CREATE TABLE manual_fills (            -- fills from Kalshi's activity export, for fill times
+    portfolio   TEXT NOT NULL,
+    fill_key    TEXT NOT NULL,
+    provenance  TEXT NOT NULL DEFAULT 'manual_import' CHECK (provenance = 'manual_import'),
+    ticker      TEXT NOT NULL,
+    side        TEXT NOT NULL CHECK (side IN ('yes', 'no')),
+    qty         REAL NOT NULL CHECK (qty > 0),
+    price       REAL NOT NULL,         -- paid per contract of `side` (No rows inverted)
+    fee         REAL NOT NULL,
+    liquidity   TEXT NOT NULL CHECK (liquidity IN ('maker', 'taker')),
+    filled_at   TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    source_line INTEGER NOT NULL,
+    imported_at TEXT NOT NULL,
+    PRIMARY KEY (portfolio, fill_key)
+);
+
+CREATE TABLE settlement_checks (       -- `nem settle verify`: Kalshi's result vs an independent
+    ticker                  TEXT PRIMARY KEY,  -- station reading; one row per market
+    series                  TEXT NOT NULL,
+    market_date             TEXT,     -- YYYY-MM-DD CLI climate day (local standard time)
+    measure                 TEXT NOT NULL CHECK (measure IN ('high', 'low')),
+    station                 TEXT NOT NULL,     -- NWS CLI id, e.g. CLINYC ('' if unmapped)
+    rules_source            TEXT NOT NULL      -- what the market's own rules name
+        CHECK (rules_source IN ('nws_cli', 'twc', 'wu', 'unverified')),
+    strike_type             TEXT,
+    floor_strike            REAL,
+    cap_strike              REAL,
+    observed_value          REAL,     -- whole degrees F; NULL when no source had it
+    source                  TEXT,     -- iem_cli (NWS CLI via IEM) / iem_asos_obs (approximate)
+    source_ref              TEXT,     -- e.g. the CLI product id
+    derived_result          TEXT CHECK (derived_result IN ('yes', 'no')),  -- replay truth
+    kalshi_result           TEXT,     -- as Kalshi reports it, incl. 'scalar'; NULL if unfetched
+    kalshi_value            REAL,     -- Kalshi's expiration_value
+    kalshi_settlement_value REAL,     -- dollars paid per YES contract
+    status                  TEXT NOT NULL
+        CHECK (status IN ('agree', 'disagree', 'kalshi_missing', 'source_missing')),
+    note                    TEXT NOT NULL DEFAULT '',
+    checked_at              TEXT NOT NULL
+);
+
+CREATE TABLE forecast_backfill (       -- `nem backfill forecasts`: archived forecasts fetched
+    source      TEXT NOT NULL,         -- after the fact (approximate; never forward-recorded)
+    station     TEXT NOT NULL,         -- NWS CLI id, e.g. CLINYC
+    target_date TEXT NOT NULL,         -- YYYY-MM-DD CLI climate day (local standard time)
+    field       TEXT NOT NULL,         -- high / low / cloud / pop / qpf_in / qpf_cat
+    value       REAL NOT NULL,
+    run_time    TEXT NOT NULL,         -- model run (initialization) time, UTC
+    valid_from  TEXT NOT NULL,         -- start of the window the value summarizes; >= run_time
+    known_at    TEXT NOT NULL,         -- run_time + the source's publication lag (conservative)
+    run_id      TEXT NOT NULL,         -- e.g. "GFS MOS 2026-01-23T12Z"
+    provenance  TEXT NOT NULL DEFAULT 'backfill' CHECK (provenance = 'backfill'),
+    fetched_at  TEXT NOT NULL,
+    PRIMARY KEY (source, station, target_date, field, run_time)
+);
+CREATE INDEX forecast_backfill_target ON forecast_backfill (station, target_date);
+
+CREATE TABLE exit_learning (           -- trades closed by an exit (nem.engine.exits), learned
+    portfolio  TEXT NOT NULL,          -- from once their market settles: `stats` and the
+    strategy   TEXT NOT NULL,          -- signal's on_settle get the settlement outcome
+    window_id  TEXT NOT NULL,
+    won        INTEGER,                -- our side won at settlement; NULL until learned
+    learned_at TEXT,                   -- the market's settlement time; NULL = pending
+    PRIMARY KEY (portfolio, strategy, window_id),
+    FOREIGN KEY (portfolio, strategy, window_id) REFERENCES trades (portfolio, strategy, window_id)
+);
+CREATE INDEX exit_learning_pending ON exit_learning (learned_at);

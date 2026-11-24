@@ -241,6 +241,23 @@ table.grid tr.retired td {
 .blotter-row > span.num {
   text-align: right;
 }
+/* excluded from statistics (nem trade exclude): muted, money columns still shown */
+.blotter-row.excluded > span {
+  color: var(--dim);
+  font-style: italic;
+}
+.blotter-row.excluded > span.excluded-flag {
+  color: var(--amber);
+  font-style: normal;
+}
+.excluded-count {
+  color: var(--amber);
+}
+.toggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
 
 /* ---------- compare ---------- */
 
@@ -276,4 +293,7 @@ table.grid tr.retired td {
 
 .spacer {
   flex: 1;
+}
+.trades-note {
+  margin: 0;
 }

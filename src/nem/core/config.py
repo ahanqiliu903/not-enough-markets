@@ -29,6 +29,7 @@ from pydantic import (
 )
 
 from nem.core.types import Mode
+from nem.execution.fees import DEFAULT_TAKER_RATE
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
 
@@ -112,10 +113,14 @@ class RiskConfig(_Strict):
     # Kill rule: stop entering once N trades have settled and net P&L is negative. Holding
     # binaries to settlement, that is the same as "win rate below break-even".
     stop_if_losing_after: PositiveInt | None = None
+    # Dollars at cost in open positions per weather station (city), across every strategy
+    # in this scope, so KXHIGHNY and a second NYC strategy share one cap. Series without a
+    # station mapping (nem.settle.stations) are blocked while this is set.
+    max_city_allocation: float | None = None
 
-    _positive = field_validator("max_allocation", "daily_loss_cap", "max_drawdown")(
-        _positive_or_null
-    )
+    _positive = field_validator(
+        "max_allocation", "daily_loss_cap", "max_drawdown", "max_city_allocation"
+    )(_positive_or_null)
 
 
 class FeedSpec(PluginSpec):
@@ -126,18 +131,87 @@ class FeedSpec(PluginSpec):
     max_age: Duration  # older values count as unavailable
 
 
+# trade_through needs trade prints, which only the historical archive has (nem.history);
+# a source without prints refuses to run it (nem.engine.runner).
+FillModel = Literal["pessimistic", "realistic", "optimistic", "trade_through"]
+# One Kalshi tick. Exit prices must be whole cents in [1c, 99c].
+_CENT = 0.01
+
+
+def _whole_cents(v: float) -> float:
+    if abs(round(v / _CENT) * _CENT - v) > 1e-9:
+        raise ValueError(f"must be a whole cent, got {v}")
+    return round(v, 2)
+
+
+class TakeProfitConfig(_Strict):
+    """A resting (maker) sell of the whole position at `price`, placed when the trade opens.
+    When it counts as filled is `fill_model` (see docs/exits-and-fills.md); there is no
+    default because it is the assumption that matters most."""
+
+    price: float = Field(ge=0.01, le=0.99)
+    fill_model: FillModel
+    # Kalshi maker fee = round_up_to_cent(rate * contracts * price * (1 - price)) on series
+    # that charge one. null = from the series' fee_type at startup (nem.market.fees): 0 for
+    # "quadratic", 0.0175 x fee_multiplier for "quadratic_with_maker_fees"; nothing runs
+    # until it is known (replay can't look it up, so set it there). A value here wins.
+    maker_fee_rate: float | None = Field(default=None, ge=0, lt=1)
+
+    _cents = field_validator("price")(_whole_cents)
+
+    @property
+    def maker_rate(self) -> float:
+        """The resolved rate; build_strategies refuses strategies where it is unknown."""
+        if self.maker_fee_rate is None:
+            raise ValueError("take_profit.maker_fee_rate is unresolved")
+        return self.maker_fee_rate
+
+
+class StopConfig(_Strict):
+    """Sell the whole position at market (walking the recorded bids, taker fee) once the
+    best bid for the held side is at or below `bid_at_or_below`."""
+
+    bid_at_or_below: float = Field(gt=0, le=0.99)
+
+    _cents = field_validator("bid_at_or_below")(_whole_cents)
+
+
+class ExitConfig(_Strict):
+    """How a position leaves before settlement. Both null (or no `exit:`) = hold."""
+
+    take_profit: TakeProfitConfig | None = None
+    stop: StopConfig | None = None
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Self:
+        tp, stop = self.take_profit, self.stop
+        if tp is not None and stop is not None and stop.bid_at_or_below >= tp.price:
+            raise ValueError("stop.bid_at_or_below must be below take_profit.price")
+        return self
+
+    @property
+    def holds(self) -> bool:
+        return self.take_profit is None and self.stop is None
+
+
 class StrategyConfig(_Strict):
     name: str = Field(pattern=NAME_PATTERN)
     status: Literal["active", "paused", "retired"] = "active"  # retired keeps its history
     series: str = Field(pattern=r"^[A-Z0-9]+$")
     check_every: Duration | None = None  # null = the portfolio's default
     # Kalshi taker fee = round_up_to_cent(rate * contracts * price * (1 - price)).
-    # 0.07 for most series; some differ (see the series' fee_multiplier). Verify; it drifts.
-    taker_fee_rate: float = Field(default=0.07, ge=0, lt=1)
+    # null = 0.07 x the series' fee_multiplier, looked up when `nem run` starts; replay
+    # can't look it up and uses 0.07. A value here wins. Verify; it drifts.
+    taker_fee_rate: float | None = Field(default=None, ge=0, lt=1)
     signal: PluginSpec
     gates: list[PluginSpec] = Field(default_factory=list[PluginSpec])
     sizing: PluginSpec
     risk: RiskConfig = Field(default_factory=lambda: RiskConfig(max_open_positions=1))
+    exit: ExitConfig | None = None  # null = hold to settlement
+
+    @property
+    def taker_rate(self) -> float:
+        return DEFAULT_TAKER_RATE if self.taker_fee_rate is None else self.taker_fee_rate
 
 
 class PortfolioConfig(_Strict):

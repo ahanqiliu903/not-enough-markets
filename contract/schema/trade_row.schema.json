@@ -20,7 +20,15 @@
     "close_time",
     "settled_at",
     "result",
-    "pnl_usd"
+    "pnl_usd",
+    "mark_bid_cents",
+    "mark_mid_cents",
+    "mark_contracts",
+    "mark_value_usd",
+    "unrealized_pnl_usd",
+    "marked_at",
+    "excluded",
+    "exclude_reason"
   ],
   "properties": {
     "schema_version": {
@@ -113,6 +121,76 @@
         "null"
       ],
       "description": "realized P&L after fees; null while open"
+    },
+    "mark_bid_cents": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-since": "1.1",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "open trade: average sale price per contract walking the recorded bids of its side for mark_contracts, cents; null when settled, unmarked or the bid side is empty"
+    },
+    "mark_mid_cents": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-since": "1.1",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "reference only, not used for P&L: (best bid + best ask) / 2 on the trade's side, cents"
+    },
+    "mark_contracts": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-since": "1.1",
+      "minimum": 0,
+      "description": "contracts the recorded bids cover (at most contracts); the rest have no bids and are valued at $0 (mark_contracts < contracts flags a pending loss)"
+    },
+    "mark_value_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "liquidation value: proceeds of selling mark_contracts at the recorded bids now, after the taker exit fee, plus $0 for the contracts without bids (0 when the bid side is empty)"
+    },
+    "unrealized_pnl_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "mark_value_usd minus entry cost (price x contracts + entry fee); set whenever the trade is marked"
+    },
+    "marked_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "x-since": "1.1",
+      "description": "time of the snapshot priced (at most 15 minutes before as_of); null when settled or unmarked"
+    },
+    "excluded": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "excluded from statistics (nem trade exclude): left out of every win rate, edge and verdict, and of P&L, equity and risk limits (treated as never taken); written true/false (CSV text \"true\"/\"false\"), null only when an older 1.x file lacks the column (read as false)"
+    },
+    "exclude_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-since": "1.1",
+      "description": "why the trade was excluded, as given to nem trade exclude; null when counted"
     }
   },
   "additionalProperties": true

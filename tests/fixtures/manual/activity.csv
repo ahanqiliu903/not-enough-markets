@@ -1,0 +1,6 @@
+﻿"type","Status","Amount_In_Dollars","Original_Date","Traded_Time","Last_Updated","Deposit_Type","Fee_In_Dollars","Market_Title","Market_Ticker","Market_Id","Filled","Remaining","Direction","Order_Type","Price_In_Cents","No_Contracts_Owned","No_Contracts_Average_Price_In_Cents","Yes_Contracts_Owned","Yes_Contracts_Average_Price_In_Cents","Result","Profit_In_Dollars","Credit_Reason","Credit_Type","Introducing_Broker"
+"Trade","","3","2026-05-31T14:00:00.000Z","10:00am EDT","","","0.00","","KXHIGHTEST-26MAY31-T80","00000000-0000-0000-0000-000000000001","","","Yes","Maker","88","","","","","","","","",""
+"Trade","","20","2026-02-02T02:00:00.000Z","9:00pm EST","","","0.12","","KXHIGHTEST-26FEB02-T50","00000000-0000-0000-0000-000000000001","","","No","Taker","9","","","","","","","","",""
+"Trade","","10","2026-01-10T14:00:00.000Z","9:00am EST","","","0.18","","KXFAKECOIN-26JAN10-B1","00000000-0000-0000-0000-000000000001","","","Yes","Taker","50","","","","","","","","",""
+"Order","Filled","","2026-02-02T01:59:00.000Z","","","","","","KXHIGHTEST-26FEB02-T50","","20","0","","","","","","","","","","","",""
+"Deposit","Applied","100","2026-01-01T15:00:00.000Z","","","debit","","","","","","","","","","","","","","","","","",""

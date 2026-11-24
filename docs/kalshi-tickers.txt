@@ -46,6 +46,9 @@ rules (weather.com/kalshi), NOT the NWS climate report, for every series below.
 Rules read like "If the minimum temperature recorded at New York City (CLINYC) for Oct 9,
 2026, is greater than 57F according to The Weather Company, then Yes." Read them for each
 series: the station and the date matter, and they differ by series.
+Older markets (through about July 2026; checked 2026-11-21 on the historical endpoint)
+settled on the NWS Daily Climate Report (CLI) for the same station instead, so check each
+market's own rules. Station mapping and checks: src/nem/settle/, `nem settle verify`.
 
 Forecast feed: nws_forecast with the station's lat/lon (a free NWS forecast for the same
 spot, a predictor, not the settlement source). Coordinates below come from
