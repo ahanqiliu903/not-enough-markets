@@ -2,6 +2,7 @@ import {
   TRADE_COLUMNS,
   type CurveKey,
   type DataError,
+  type EquityResult,
   type PnlCurve,
   type TradeColumn,
   type TradeRow,
@@ -143,4 +144,27 @@ export function pnlCurves(source: LoadedSource, keys: CurveKey[]): { curves: Pnl
     curves.push({ portfolio: k.portfolio, strategy: k.strategy, t, pnl });
   }
   return { curves, errors: [...new Map(errors.map((e) => [JSON.stringify(e), e])).values()] };
+}
+
+/**
+ * A portfolio's value over time, straight from the engine's equity.csv (value_usd and
+ * book_value_usd per point). `curve` is null when the source has no equity.csv for it.
+ */
+export function equityCurve(source: LoadedSource, portfolio: string): EquityResult {
+  const p = source.portfolios.find((x) => x.name === portfolio);
+  if (p === undefined) return { ok: true, curve: null };
+  const errors = p.errors.filter((e) => e.file.endsWith("equity.csv"));
+  if (errors.length > 0) return { ok: false, errors };
+  if (p.equity === null) return { ok: true, curve: null };
+  const rows = [...p.equity].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  return {
+    ok: true,
+    curve: {
+      portfolio,
+      t: rows.map((r) => Date.parse(r.ts) / 1000),
+      value: rows.map((r) => r.value_usd),
+      book: rows.map((r) => r.book_value_usd),
+      lastUnmarked: rows[rows.length - 1]?.open_unmarked ?? 0,
+    },
+  };
 }

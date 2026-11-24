@@ -8,7 +8,9 @@
 
 import type { SourcesState } from "./data";
 
-export const SHEETS_TABS = ["summary", "strategies", "trades"] as const;
+export const SHEETS_TABS = ["summary", "strategies", "trades", "equity"] as const;
+/** Tabs an older engine doesn't write (contract 1.1): absent is not an error. */
+export const OPTIONAL_SHEETS_TABS: readonly SheetsTab[] = ["equity"];
 export type SheetsTab = (typeof SHEETS_TABS)[number];
 
 /** Poll choices in minutes; null = only on "Sync now". Default 5, never under 1. */

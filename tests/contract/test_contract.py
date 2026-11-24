@@ -13,7 +13,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-from nem.stats.report import STRATEGY_COLUMNS, SUMMARY_COLUMNS, TRADE_COLUMNS
+from nem.stats.report import EQUITY_COLUMNS, STRATEGY_COLUMNS, SUMMARY_COLUMNS, TRADE_COLUMNS
 
 CONTRACT = Path(__file__).parents[2] / "contract"
 SCHEMAS: dict[str, dict[str, Any]] = {
@@ -112,6 +112,27 @@ def test_good_fixtures_validate(fixture: str) -> None:
         assert violations(schema_name, json.loads((root / file).read_text())) == []
     for run in (root / "out" / "backtests").glob("*.json"):
         assert violations("backtest_run.schema.json", json.loads(run.read_text())) == []
+
+
+def test_equity_schema_matches_engine_columns() -> None:
+    schema = SCHEMAS["equity_row.schema.json"]
+    assert schema["required"] == EQUITY_COLUMNS
+    assert schema["x-since"] == "1.1"  # the whole table is a 1.1 addition
+
+
+@pytest.mark.parametrize("fixture", ["basic", "empty"])
+def test_equity_fixture_validates(fixture: str) -> None:
+    path = FIXTURES / fixture / "out" / "fixture" / "equity.csv"
+    with path.open(newline="") as f:
+        assert next(csv.reader(f)) == EQUITY_COLUMNS
+    rows = read_rows(path, "equity_row.schema.json")
+    assert [m for r in rows for m in violations("equity_row.schema.json", r)] == []
+    stamps = [str(r["ts"]) for r in rows]
+    assert stamps == sorted(stamps) and len(set(stamps)) == len(stamps)
+    if fixture == "basic":
+        summary = read_rows(path.with_name("summary.csv"), "summary_row.schema.json")[0]
+        assert stamps[-1] == summary["as_of"]  # the last point is the report time
+        assert rows[-1]["book_value_usd"] == summary["equity_usd"]
 
 
 def test_basic_fixture_covers_each_verdict() -> None:

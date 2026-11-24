@@ -125,6 +125,8 @@ export interface LineSeries {
   values: (number | null)[];
   /** Drawn as a filled area to zero (drawdown). */
   fill?: boolean;
+  /** Dash pattern in px (e.g. [4, 4]) for a reference line. */
+  dash?: number[];
 }
 
 function canDraw(): boolean {
@@ -187,6 +189,7 @@ export function LineChart({
             spanGaps: false,
             points: { show: false },
             ...(s.fill === true ? { fill: derivedColors["down-soft"] } : {}),
+            ...(s.dash !== undefined ? { dash: s.dash, width: 1 } : {}),
           })),
         ],
       };

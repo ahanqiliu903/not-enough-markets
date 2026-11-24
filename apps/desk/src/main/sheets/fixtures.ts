@@ -26,7 +26,8 @@ export function fixtureSheetsFetch(dir: string): SheetsFetch {
       // no forced status
     }
     const tab = url.searchParams.get("sheet") ?? "";
-    const files = (await readdir(dir)).filter((f) => f.endsWith(".csv")).sort();
+    // equity.csv (contract 1.1) is the reporter's last tab, never a sheet's first
+    const files = (await readdir(dir)).filter((f) => f.endsWith(".csv") && f !== "equity.csv").sort();
     const name = files.includes(`${tab}.csv`) ? `${tab}.csv` : files[0];
     if (name === undefined || /[/\\]/.test(tab)) return response(404, "", "text/html");
     return response(200, await readFile(join(dir, name), "utf8"));

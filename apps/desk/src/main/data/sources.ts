@@ -5,6 +5,7 @@ import type {
   CurveKey,
   CurvesResult,
   DataSource,
+  EquityResult,
   Snapshot,
   SnapshotResult,
   SourceResult,
@@ -15,7 +16,7 @@ import type {
   TradesQuery,
 } from "@shared/data";
 import { fingerprint, loadSource, type LoadedSource } from "./source";
-import { pnlCurves, TradeIndex, tradesCsv } from "./trades";
+import { equityCurve, pnlCurves, TradeIndex, tradesCsv } from "./trades";
 
 /**
  * Data sources (DESK-004): the user's list of folders, persisted as JSON in the app's
@@ -385,6 +386,13 @@ export class SourceManager {
     const { refs, errors } = this.index.query(l.loaded, this.revision, f);
     if (errors.length > 0) return { ok: false, errors };
     return { ok: true, csv: tradesCsv(refs), rows: refs.length };
+  }
+
+  /** A portfolio's value over time (equity.csv); null curve when the file is absent. */
+  equity(portfolio: string | undefined): EquityResult {
+    const l = this.load();
+    if (l === null || portfolio === undefined) return { ok: true, curve: null };
+    return equityCurve(l.loaded, portfolio);
   }
 
   curves(keys: CurveKey[]): CurvesResult {

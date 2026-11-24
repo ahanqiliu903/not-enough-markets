@@ -23,7 +23,12 @@
         "unrealized_pnl_usd": 0.0,
         "open_unmarked": 0,
         "open_no_bid_contracts": 0,
-        "excluded_trades": 0
+        "excluded_trades": 0,
+        "pending_locked_pnl_usd": 0.0,
+        "pending_likely_pnl_usd": 0.0,
+        "pending_locked": 0,
+        "pending_likely": 0,
+        "pending_conflict": 0
       },
       "strategies": []
     }

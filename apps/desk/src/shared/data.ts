@@ -46,6 +46,17 @@ export interface SummaryRow {
    * statistic and money total the engine reports.
    */
   excluded_trades: number | null;
+  /**
+   * Contract 1.1 (null when not computed or an older 1.x file lacks them): provisional
+   * results of counted open trades (`nem.settle.provisional`): P&L if the locked / likely
+   * ones settle that way, their counts, and conflicts (observed vs price, not summed).
+   * Reporting only: not counted in P&L, equity or statistics; Kalshi settles.
+   */
+  pending_locked_pnl_usd: number | null;
+  pending_likely_pnl_usd: number | null;
+  pending_locked: number | null;
+  pending_likely: number | null;
+  pending_conflict: number | null;
 }
 
 export interface StrategyRow {
@@ -91,6 +102,17 @@ export interface StrategyRow {
    * statistic and money total the engine reports.
    */
   excluded_trades: number | null;
+  /**
+   * Contract 1.1 (null when not computed or an older 1.x file lacks them): provisional
+   * results of counted open trades (`nem.settle.provisional`): P&L if the locked / likely
+   * ones settle that way, their counts, and conflicts (observed vs price, not summed).
+   * Reporting only: not counted in P&L, equity or statistics; Kalshi settles.
+   */
+  pending_locked_pnl_usd: number | null;
+  pending_likely_pnl_usd: number | null;
+  pending_locked: number | null;
+  pending_likely: number | null;
+  pending_conflict: number | null;
 }
 
 export interface TradeRow {
@@ -128,6 +150,16 @@ export interface TradeRow {
    */
   excluded: boolean | null;
   exclude_reason: string | null;
+  /**
+   * Contract 1.1 provisional result of an open trade (null when settled, not computed, or
+   * an older file): `locked_win`, `locked_loss`, `likely_win`, `likely_loss`, `conflict`,
+   * `unknown` (shown as text if unrecognised); basis `observed` / `price` / `both`; P&L if
+   * it holds; the climate day's running high/low (°F) for temperature series. Not counted.
+   */
+  provisional_result: string | null;
+  provisional_basis: string | null;
+  provisional_pnl_usd: number | null;
+  observed_extreme_f: number | null;
 }
 
 export const TRADE_COLUMNS = [
@@ -157,6 +189,11 @@ export const TRADE_COLUMNS = [
   // contract 1.1: excluded from statistics
   "excluded",
   "exclude_reason",
+  // contract 1.1: provisional result of open trades (not counted)
+  "provisional_result",
+  "provisional_basis",
+  "provisional_pnl_usd",
+  "observed_extreme_f",
 ] as const satisfies readonly (keyof TradeRow)[];
 
 export type TradeColumn = (typeof TRADE_COLUMNS)[number];
@@ -396,6 +433,42 @@ export interface PnlCurve extends CurveKey {
 }
 
 export type CurvesResult = { ok: true; curves: PnlCurve[] } | { ok: false; errors: DataError[] };
+
+/**
+ * Contract 1.1 `equity.csv`: the portfolio's value at one point in time (hourly from its
+ * first activity, plus the report's as_of). Engine values; excluded trades left out.
+ */
+export interface EquityRow {
+  schema_version: string;
+  portfolio: string;
+  ts: string;
+  /** Starting balance + realized P&L + interest: open positions at cost. */
+  book_value_usd: number;
+  realized_pnl_usd: number;
+  interest_usd: number;
+  /** Marked open trades at liquidation value minus cost; unmarked ones count 0 (at cost). */
+  unrealized_pnl_usd: number;
+  /** book_value_usd + unrealized_pnl_usd. */
+  value_usd: number;
+  open_positions: number;
+  open_unmarked: number;
+}
+
+/** A portfolio's value over time, from its equity.csv (a chart helper; nothing derived). */
+export interface EquityCurve {
+  portfolio: string;
+  /** Unix seconds of each point. */
+  t: number[];
+  /** value_usd: open positions marked. */
+  value: number[];
+  /** book_value_usd: open positions at cost (realized only). */
+  book: number[];
+  /** open_unmarked at the last point. */
+  lastUnmarked: number;
+}
+
+/** `curve` null: the source has no equity.csv for the portfolio (older engine, `nem summary`). */
+export type EquityResult = { ok: true; curve: EquityCurve | null } | { ok: false; errors: DataError[] };
 
 export function curveId(k: CurveKey): string {
   return `${k.portfolio}/${k.strategy}`;

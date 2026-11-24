@@ -9,7 +9,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Snapshot, TradeColumn, TradeResult, TradeRow, TradesFilter, TradesPage } from "@shared/data";
 import { EmptyState } from "../../components/states";
-import { EXCLUDED_NOTE, excludedFlag, int, MARK_LABEL, noBidFlag, num, signClass, signedUsd, ts, usd } from "../../data/format";
+import { EXCLUDED_NOTE, excludedFlag, int, MARK_LABEL, noBidFlag, num, PENDING_NOTE, provisionalClass, provisionalText, signClass, signedUsd, ts, usd } from "../../data/format";
 import { DataErrors, DATA_COMMANDS, SourceGate } from "../../data/states";
 import { nem, queryKeys } from "../../lib/api";
 import { useNav } from "../../state/nav";
@@ -48,6 +48,16 @@ const TRADE_COLS: readonly Col[] = [
   { id: "result", label: "Result", width: 64, cell: (r) => r.result, tone: (r) => (r.result === "won" ? "up" : r.result === "lost" ? "down" : "dim") },
   { id: "excluded", label: "Statistics", width: 220, cell: (r) => excludedFlag(r) || "counted", tone: (r) => (r.excluded === true ? "excluded-flag" : "dim") },
   { id: "pnl_usd", label: "P&L", width: 80, num: true, cell: (r) => signedUsd(r.pnl_usd), tone: (r) => signClass(r.pnl_usd) },
+  {
+    id: "provisional_result",
+    label: "Pending",
+    width: 200,
+    cell: (r) => {
+      const text = provisionalText(r);
+      return text && r.provisional_pnl_usd !== null ? `${text} ${signedUsd(r.provisional_pnl_usd)}` : text;
+    },
+    tone: (r) => provisionalClass(r.provisional_result),
+  },
   { id: "unrealized_pnl_usd", label: "Unrealized", width: 90, num: true, cell: (r) => signedUsd(r.unrealized_pnl_usd), tone: (r) => signClass(r.unrealized_pnl_usd) },
   { id: "mark_value_usd", label: "Mark value", width: 84, num: true, cell: (r) => usd(r.mark_value_usd) },
   { id: "mark_bid_cents", label: "Mark c", width: 64, num: true, cell: (r) => num(r.mark_bid_cents, 1) },
@@ -254,7 +264,7 @@ function Trades({ snapshot }: { snapshot: Snapshot }) {
         </button>
         {exportMsg !== null && <span className="dim" role="status">{exportMsg}</span>}
       </div>
-      <p className="dim trades-note">Mark columns (open trades): {MARK_LABEL}, from the engine; contracts without bids count at $0 (flagged "no bids"); empty when settled, stale or closed. Muted rows are {EXCLUDED_NOTE}.</p>
+      <p className="dim trades-note">Mark columns (open trades): {MARK_LABEL}, from the engine; contracts without bids count at $0 (flagged "no bids"); empty when settled, stale or closed. Muted rows are {EXCLUDED_NOTE}. Pending (open trades): provisional result from the observed running high/low or a 98c+ price, with its P&L if it holds; {PENDING_NOTE}.</p>
       <div className="blotter" ref={scrollRef} role="table" aria-label="Trades" aria-rowcount={total + 1}>
         <div className="blotter-head" role="row" style={{ gridTemplateColumns: gridTemplate }}>
           {table.getHeaderGroups()[0]?.headers.map((h) => {

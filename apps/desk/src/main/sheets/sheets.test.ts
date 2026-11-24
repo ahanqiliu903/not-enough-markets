@@ -242,14 +242,14 @@ describe("SheetsManager sync", () => {
     m.save({ sheet: FAKE_ID, portfolios: ["fixture"], intervalMinutes: null });
     const info = await m.sync();
     expect(info.ok).toBe(true);
-    expect(info.tabs.map((t) => `${t.tab}:${String(t.ok)}`)).toEqual(["summary:true", "strategies:true", "trades:true"]);
-    expect(calls.map((c) => new URL(c.url).searchParams.get("sheet"))).toEqual(["fixture summary", "fixture strategies", "fixture trades"]);
+    expect(info.tabs.map((t) => `${t.tab}:${String(t.ok)}`)).toEqual(["summary:true", "strategies:true", "trades:true", "equity:true"]);
+    expect(calls.map((c) => new URL(c.url).searchParams.get("sheet"))).toEqual(["fixture summary", "fixture strategies", "fixture trades", "fixture equity"]);
     expect(synced).toEqual([dir]);
 
     const fromSheet = loadSource(dir);
     const fromFolder = loadSource(join(FIXTURES, "basic"));
     expect(fromSheet.portfolios.map((p) => p.errors)).toEqual([[]]);
-    const pick = (s: typeof fromSheet) => s.portfolios.map(({ name, summary, strategies, trades }) => ({ name, summary, strategies, trades }));
+    const pick = (s: typeof fromSheet) => s.portfolios.map(({ name, summary, strategies, trades, equity }) => ({ name, summary, strategies, trades, equity }));
     expect(pick(fromSheet)).toEqual(pick(fromFolder));
     // Nothing logged or reported carries the ID.
     expect([...logs, JSON.stringify(info)].join("\n")).not.toContain(FAKE_ID);
@@ -271,6 +271,21 @@ describe("SheetsManager sync", () => {
     expect(info.tabs.find((t) => t.tab === "trades")?.error?.kind).toBe("missing_tab");
     expect(existsSync(join(dir, "out/fixture/trades.csv"))).toBe(false);
     expect(loadSource(dir).portfolios[0]?.errors.map((e) => e.kind)).toEqual(["missing_file"]);
+  });
+
+  it("a missing equity tab (older engine) is not an error and leaves no stale copy", async () => {
+    const good = fixtureFetch("basic");
+    const { m, cache: dir, serve } = manager(good.fetch);
+    m.save({ sheet: FAKE_ID, portfolios: ["fixture"], intervalMinutes: null });
+    await m.sync();
+    expect(existsSync(join(dir, "out/fixture/equity.csv"))).toBe(true);
+
+    serve(fixtureFetch("basic", { "fixture equity": "summary.csv" }).fetch);
+    const info = await m.sync();
+    expect(info.ok).toBe(true);
+    expect(info.tabs.map((t) => t.tab)).toEqual(["summary", "strategies", "trades"]);
+    expect(existsSync(join(dir, "out/fixture/equity.csv"))).toBe(false);
+    expect(loadSource(dir).portfolios[0]?.errors).toEqual([]);
   });
 
   it("schema problems come back per tab and the data layer shows the same error", async () => {

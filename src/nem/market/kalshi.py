@@ -52,6 +52,7 @@ class KalshiMarket:
     strike_type: StrikeType | None = None
     floor_strike: float | None = None
     cap_strike: float | None = None
+    last_price: float | None = None  # last trade, YES side, dollars; None before any trade
 
 
 def _price(s: str | None) -> float | None:
@@ -97,6 +98,7 @@ def parse_market(m: dict[str, Any]) -> KalshiMarket:
         strike_type=m.get("strike_type") if m.get("strike_type") in STRIKE_TYPES else None,
         floor_strike=_number(m.get("floor_strike")),
         cap_strike=_number(m.get("cap_strike")),
+        last_price=_bid(m.get("last_price_dollars")),
     )
 
 

@@ -1,5 +1,6 @@
 import type {
   DataError,
+  EquityResult,
   Snapshot,
   SnapshotResult,
   SourcesState,
@@ -38,6 +39,11 @@ export const SUMMARY: SummaryRow = {
   open_unmarked: 0,
   open_no_bid_contracts: 0,
   excluded_trades: 0,
+  pending_locked_pnl_usd: 0,
+  pending_likely_pnl_usd: 0,
+  pending_locked: 0,
+  pending_likely: 0,
+  pending_conflict: 0,
 };
 
 function strat(o: Partial<StrategyRow> & Pick<StrategyRow, "strategy" | "series" | "verdict">): StrategyRow {
@@ -68,6 +74,11 @@ function strat(o: Partial<StrategyRow> & Pick<StrategyRow, "strategy" | "series"
     open_unmarked: 0,
     open_no_bid_contracts: 0,
     excluded_trades: 0,
+    pending_locked_pnl_usd: 0,
+    pending_likely_pnl_usd: 0,
+    pending_locked: 0,
+    pending_likely: 0,
+    pending_conflict: 0,
     ...o,
   };
 }
@@ -104,6 +115,10 @@ export function trade(i: number, strategy = "btc_edge"): TradeRow {
     marked_at: null,
     excluded: false,
     exclude_reason: null,
+    provisional_result: null,
+    provisional_basis: null,
+    provisional_pnl_usd: null,
+    observed_extreme_f: null,
   };
 }
 
@@ -148,6 +163,8 @@ export interface FakeOptions {
   tradesError?: DataError[];
   /** Row generator for the trades pages (default `trade`). */
   tradeRow?: (i: number) => TradeRow;
+  /** `data:equity` answer (default: no equity.csv, `curve` null). */
+  equity?: EquityResult;
 }
 
 export interface Fake {
@@ -180,6 +197,7 @@ export function fakeApi(o: FakeOptions = {}): Fake {
           ok: true,
           curves: keys.map((k) => ({ ...k, t: [1759277703, 1759278603], pnl: [0.51, 1.07] })),
         }),
+      equity: () => Promise.resolve(o.equity ?? { ok: true, curve: null }),
       onChanged: () => () => undefined,
       db: undefined as unknown as NemApi["data"]["db"],
       updates: undefined as unknown as NemApi["data"]["updates"],
