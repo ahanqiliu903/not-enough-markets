@@ -37,6 +37,8 @@ class StrategyRuntime:
     # (window_id, decision, reason) already logged, so a gate that blocks every tick of a
     # window logs once instead of hundreds of times
     logged: set[tuple[str, str, str]] = field(default_factory=set[tuple[str, str, str]])
+    # plugin errors since the runner last reported them (nem.engine.step.plugin_error)
+    errors: list[str] = field(default_factory=list[str])
 
     @property
     def key(self) -> StrategyKey:

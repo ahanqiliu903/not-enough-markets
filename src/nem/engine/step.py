@@ -52,6 +52,17 @@ def snapshot_problem(snap: MarketSnapshot, now: datetime, max_age: timedelta) ->
     return None
 
 
+def plugin_error(rt: StrategyRuntime, window_id: str, reason: str, e: Exception) -> None:
+    """Note a plugin bug: logged with its traceback once per window, and kept on the
+    runtime (`rt.errors`) until the runner reports it."""
+    rt.errors.append(f"{rt.key[0]}/{rt.key[1]} {reason}: {e}")
+    marker = (window_id, "error", reason)
+    if marker in rt.logged:
+        return
+    rt.logged.add(marker)
+    log.error("%s/%s %s on %s; skipping it", *rt.key, reason, window_id, exc_info=e)
+
+
 def _log(
     rt: StrategyRuntime, store: Store, sig: Signal, ctx: Context, kind: DecisionKind, reason: str
 ) -> None:
@@ -82,6 +93,11 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         sig = rt.signal.on_market(snap, ctx)
     except DataUnavailable:
         return None
+    except Exception as e:
+        # A signal bug never trades and never stops the tick: skip this market for this
+        # strategy. There's no signal to log, so the runner's heartbeat carries the error.
+        plugin_error(rt, snap.window_id, f"signal:error:{type(e).__name__}", e)
+        return None
     if sig is None:
         return None
 
@@ -91,7 +107,13 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
             _log(rt, store, sig, ctx, "skip", d.reason)
             return None
 
-    sizing = rt.sizer.size(sig, ctx)
+    try:
+        sizing = rt.sizer.size(sig, ctx)
+    except Exception as e:
+        reason = f"sizer:error:{type(e).__name__}"
+        plugin_error(rt, sig.window_id, reason, e)
+        _log(rt, store, sig, ctx, "skip", reason)
+        return None
     if sizing.qty <= 0:
         _log(rt, store, sig, ctx, "skip", f"size_zero: {sizing.reason}")
         return None
