@@ -112,7 +112,9 @@ uv run nem suggest paper fav90 --data data/nem.db \
 - The data is split in time: settings are chosen on the earliest 70% (`--holdout 0.3`) and only checked on the rest, never chosen from it.
 - The choice favors a broad region of decent settings over the single best cell, shrinks small samples toward zero edge, and treats variants with fewer than `--min-trades` (30) trades as unknown.
 - The result is `suggested`, `rejected` (nothing looked profitable, or it clearly lost on the later data) or `insufficient` (not enough trades). It prints a train vs test table and the grid.
-- `--write` appends the suggestion as `<strategy>_suggested` to the portfolio file, next to the original, so both paper-trade side by side. `--save` keeps the run for the desk's **Backtests** screen:
+- Every fee rate is printed with where it came from: the portfolio file, the series' fee schedule recorded by `nem run`, or the labelled default 0.07.
+- `--write` appends the suggestion as `<strategy>_suggested` to the portfolio file, next to the original, so both paper-trade side by side.
+- Each run is saved (`--save DIR`, default `out/backtests`) under an id that never overwrites another run, with a manifest: the resolved portfolio config and fee sources, the fill assumptions, a content hash of the replayed rows, the engine version and git revision, and `--hypothesis` / `--notes` if given. `uv run nem rerun out/backtests/<run_id>.json [--data DB]` reruns it offline and checks it reproduces exactly (it refuses if the data changed; rerun on a snapshot, not the live database). The desk's **Backtests** screen reads the saved runs:
 
 ![Backtests: sweep heatmap with the chosen cell and trade counts, train vs held-out test](apps/desk/docs/screenshots/backtests.png)
 

@@ -64,6 +64,20 @@
   - `trades`: `excluded` (boolean; CSV text `true`/`false`, read absent as false) and
     `exclude_reason` (string, null when counted).
   - `summary` and `strategies`: `excluded_trades` (integer, settled and open).
+- SQLite schema v9: order lifecycle for atomic execution. `orders` gains `kind`
+  (`entry`/`exit`), `filled_qty`, `cancelled_qty` (terminal entry orders: filled +
+  cancelled = qty, the IOC remainder cancelled) and nullable `close_time`; `fills` gains
+  `fill_id` (unique). Entry `status` gains `cancelled` (an unknown outcome resolved on
+  startup). Existing databases are upgraded in place; no CSV/JSON column changed. NEM Desk
+  accepts v3 to v9.
+- Reproducible backtest runs. `out/backtests/<run_id>.json` gains the manifest fields
+  `config`, `fees`, `execution`, `dataset`, `inputs`, `engine`, `hypothesis`, `notes`
+  (`"x-since": "1.1"`, optional in the schema so 1.0 runs still validate; written by
+  every 1.1 engine). `run_id` gains an 8-hex hash of the run's inputs and a `-n` suffix
+  when the name is taken. `nem rerun FILE` reruns a run from them offline. NEM Desk shows
+  them in a Reproducibility panel. SQLite schema v10 adds `series_fees` (fee schedules
+  `nem run` read, used by replay and suggest); NEM Desk accepts v3 to v10. Fixtures
+  regenerated.
   - Semantics: excluded trades are left out of every statistic (strategy row `trades`,
     `wins`, win rate, edge and intervals, `verdict`, `trades_to_detect`, `brier`, calibration,
     `exits`, and the row's `pnl_usd`, `pnl_per_trade_usd`, `roi`, `max_drawdown_usd`), of

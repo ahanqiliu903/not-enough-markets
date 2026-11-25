@@ -52,6 +52,17 @@ def snapshot_problem(snap: MarketSnapshot, now: datetime, max_age: timedelta) ->
     return None
 
 
+def plugin_error(rt: StrategyRuntime, window_id: str, reason: str, e: Exception) -> None:
+    """Note a plugin bug: logged with its traceback once per window, and kept on the
+    runtime (`rt.errors`) until the runner reports it."""
+    rt.errors.append(f"{rt.key[0]}/{rt.key[1]} {reason}: {e}")
+    marker = (window_id, "error", reason)
+    if marker in rt.logged:
+        return
+    rt.logged.add(marker)
+    log.error("%s/%s %s on %s; skipping it", *rt.key, reason, window_id, exc_info=e)
+
+
 def _log(
     rt: StrategyRuntime, store: Store, sig: Signal, ctx: Context, kind: DecisionKind, reason: str
 ) -> None:
@@ -82,6 +93,11 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         sig = rt.signal.on_market(snap, ctx)
     except DataUnavailable:
         return None
+    except Exception as e:
+        # A signal bug never trades and never stops the tick: skip this market for this
+        # strategy. There's no signal to log, so the runner's heartbeat carries the error.
+        plugin_error(rt, snap.window_id, f"signal:error:{type(e).__name__}", e)
+        return None
     if sig is None:
         return None
 
@@ -91,9 +107,21 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
             _log(rt, store, sig, ctx, "skip", d.reason)
             return None
 
-    sizing = rt.sizer.size(sig, ctx)
+    try:
+        sizing = rt.sizer.size(sig, ctx)
+    except Exception as e:
+        reason = f"sizer:error:{type(e).__name__}"
+        plugin_error(rt, sig.window_id, reason, e)
+        _log(rt, store, sig, ctx, "skip", reason)
+        return None
     if sizing.qty <= 0:
         _log(rt, store, sig, ctx, "skip", f"size_zero: {sizing.reason}")
+        return None
+
+    # One attempt at a time: an earlier attempt whose outcome isn't recorded (a crash
+    # between writes) blocks a new one until reconciliation resolves it.
+    if store.unresolved_attempt(rt.key, sig.window_id, sig.side):
+        _log(rt, store, sig, ctx, "skip", "order:unresolved_attempt")
         return None
 
     # Risk sees what the order would actually cost, fees included: the broker's quote walks
@@ -108,11 +136,14 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         _log(rt, store, sig, ctx, "skip", d.reason)
         return None
 
-    store.record_order(order, now, rt.broker.mode, "submitted")
+    # Written before the order is sent: a crash from here on leaves a visible `submitted`
+    # order (an unknown outcome) instead of nothing. Its outcome is then one transaction.
+    store.record_order(order, now, rt.broker.mode, "submitted", close_time=snap.close_time)
     fill = rt.broker.submit(order, snap, now)
     if fill is None:
-        store.set_order_status(order.client_order_id, "no_fill")
-        _log(rt, store, sig, ctx, "no_fill", rt.broker.no_fill_reason(order, snap))
+        with store.transaction():
+            store.set_order_status(order.client_order_id, "no_fill")
+            _log(rt, store, sig, ctx, "no_fill", rt.broker.no_fill_reason(order, snap))
         return None
     if fill_cost(fill) > approved + COST_EPS:
         # Can't happen with the paper broker (the quote is exact); never book more than
@@ -121,12 +152,11 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
             "%s/%s fill cost %.6f above approved %.6f; not booked",
             *rt.key, fill_cost(fill), approved,
         )  # fmt: skip
-        store.set_order_status(order.client_order_id, "rejected_over_risk")
-        _log(rt, store, sig, ctx, "skip", "risk:fill_above_approved_cost")
+        with store.transaction():
+            store.set_order_status(order.client_order_id, "rejected_over_risk")
+            _log(rt, store, sig, ctx, "skip", "risk:fill_above_approved_cost")
         return None
 
-    store.record_fill(fill)
-    store.set_order_status(order.client_order_id, "filled" if fill.qty == order.qty else "partial")
     trade = Trade(
         portfolio=sig.portfolio,
         strategy=sig.strategy,
@@ -140,8 +170,9 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         opened_at=now,
         close_time=snap.close_time,
     )
-    store.open_trade(trade)
-    _log(rt, store, sig, ctx, "take", f"ok: {sizing.reason}")
+    with store.transaction():  # fill, terminal status, position and its log: all or nothing
+        store.record_entry(fill, trade)
+        _log(rt, store, sig, ctx, "take", f"ok: {sizing.reason}")
     log.info(
         "%s/%s bought %d %s %s @ %.4f (fee %.2f)",
         *rt.key, fill.qty, sig.side.upper(), sig.ticker, fill.price, fill.fee,

@@ -363,7 +363,7 @@ folder (`sources.json`); source folders are only read.
   `-wal`/`-shm` files, nothing written, and WAL-mode snapshots open even in read-only folders.
   That is safe because sources are snapshot files replaced by rename (rsync,
   `deploy/snapshot.sh`); a changed inode/size/mtime reopens. A file with a `-wal`/`-journal`
-  beside it is a live DB and is refused. `PRAGMA user_version` must be 3 to 8. Queries are limited
+  beside it is a live DB and is refused. `PRAGMA user_version` must be 3 to 10. Queries are limited
   (500 markets per page, 5,000 snapshots per market, 20,000 feed values). Errors are values
   (`no_db`, `missing_file`, `live_db`, `locked`, `not_sqlite`, `schema_version`, `query`).
 - **Which DB**: a source's attached file (Settings, "Attach DB..."), else `nem.db` or

@@ -1,4 +1,4 @@
-import type { BacktestRun, Snapshot, StrategyRow, VariantMetrics } from "@shared/data";
+import type { BacktestFeeRate, BacktestRun, Snapshot, StrategyRow, VariantMetrics } from "@shared/data";
 import { PixelIcon } from "../../components/PixelIcon";
 import { TierBadge } from "../../components/TierBadge";
 import { IntervalChart } from "../../data/charts";
@@ -9,6 +9,42 @@ import { MetricsTable, RunStatusTag, SweepHeatmap, VariantsTable, WindowsBar } f
 
 const TEST_NOTE =
   "Test (held-out) metrics exist for the chosen variant only, by design: showing every variant's test result would invite choosing on test data.";
+
+function feeText(r: BacktestFeeRate | null): string {
+  if (r === null) return "-";
+  return `${r.rate === null ? "unknown" : r.rate.toFixed(4)} (${r.source}: ${r.detail})`;
+}
+
+/** Contract 1.1 manifest: what the result depends on, as saved by the engine. */
+function Reproducibility({ run }: { run: BacktestRun }) {
+  if (run.dataset === undefined) {
+    return (
+      <section className="panel-box" aria-label="Reproducibility">
+        <h3>Reproducibility</h3>
+        <p className="dim">Saved before contract 1.1: no manifest, so this run can't be rerun.</p>
+      </section>
+    );
+  }
+  const fees = (run.fees ?? []).filter((f) => f.strategy === run.strategy);
+  return (
+    <section className="panel-box" aria-label="Reproducibility">
+      <h3>Reproducibility</h3>
+      {run.hypothesis ? <p>hypothesis: {run.hypothesis}</p> : null}
+      {fees.map((f) => (
+        <p key={f.strategy}>
+          taker fee <b>{feeText(f.taker_fee_rate)}</b>
+          {f.maker_fee_rate === null ? null : <> · maker fee {feeText(f.maker_fee_rate)}</>}
+        </p>
+      ))}
+      <p className="dim">
+        data <code>{run.dataset.path}</code> sha256 <code>{run.dataset.sha256.slice(0, 12)}</code> · engine{" "}
+        {run.engine?.version ?? "-"} {run.engine?.git_revision?.slice(0, 10) ?? ""} · rerun:{" "}
+        <code>nem rerun {run.file}</code>
+      </p>
+      {run.notes ? <p className="dim">notes: {run.notes}</p> : null}
+    </section>
+  );
+}
 
 export function RunDetail({ run, snapshot }: { run: BacktestRun; snapshot: Snapshot }) {
   const navigate = useNav((s) => s.navigate);
@@ -71,6 +107,8 @@ export function RunDetail({ run, snapshot }: { run: BacktestRun; snapshot: Snaps
           <WindowsBar run={run} />
         </section>
       </div>
+
+      <Reproducibility run={run} />
 
       <section className="panel-box" aria-label="Engine reasons">
         <h3>Engine reasons</h3>

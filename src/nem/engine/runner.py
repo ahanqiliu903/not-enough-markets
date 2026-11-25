@@ -21,6 +21,7 @@ from nem.core.config import PortfolioConfig
 from nem.core.context import Context
 from nem.core.types import FeedValue, Trade
 from nem.engine.exits import run_exits
+from nem.engine.reconcile import reconcile
 from nem.engine.runtime import (
     BuildError,
     FeedRuntime,
@@ -29,7 +30,7 @@ from nem.engine.runtime import (
     build_strategies,
 )
 from nem.engine.settlement import accrue_interest, settle_due
-from nem.engine.step import evaluate
+from nem.engine.step import evaluate, plugin_error
 from nem.execution.book import BookTaken
 from nem.execution.exits import TradedVolume
 from nem.market.kalshi import KalshiError
@@ -65,6 +66,8 @@ class Runner:
         self.data = data or store
         self.clock = clock
         self._by_key = {rt.key: rt for rt in self.strategies}
+        # Before any new attempt: resolve what a crash between writes left half-recorded.
+        self.reconciliation = reconcile(store, self.data)
 
     def _check_prints(self, strategies: Sequence[StrategyRuntime]) -> None:
         if self._traded is not None:
@@ -87,7 +90,10 @@ class Runner:
     def _on_settle(self, trade: Trade) -> None:
         rt = self._by_key.get((trade.portfolio, trade.strategy))
         if rt is not None and not trade.excluded:  # excluded trades teach the signal nothing
-            rt.signal.on_settle(trade, self.context(rt))
+            try:
+                rt.signal.on_settle(trade, self.context(rt))
+            except Exception as e:  # the settlement is committed; a signal bug can't undo it
+                plugin_error(rt, trade.window_id, f"signal:on_settle:error:{type(e).__name__}", e)
 
     def _equity_at(self, p: PortfolioConfig, at: datetime) -> float:
         start = p.starting_balance or p.budget or 0.0
@@ -148,7 +154,14 @@ class Runner:
                     # buying YES lifts NO bids (and vice versa), cheapest ask first
                     book.take(view, "no" if trade.side == "yes" else "yes", trade.qty)
                     trades.append(trade)
-        self.store.heartbeat(now, PROCESS, "ok")
+        errors = [e for rt in self.strategies for e in rt.errors]
+        for rt in self.strategies:
+            rt.errors.clear()
+        status = "ok"
+        if errors:  # `nem status` shows the runner failing, with the first error
+            more = f" (+{len(errors) - 1} more)" if len(errors) > 1 else ""
+            status = f"error: {errors[0]}"[: 200 - len(more)] + more
+        self.store.heartbeat(now, PROCESS, status)
         return trades
 
     def reload(self, portfolios: Sequence[PortfolioConfig]) -> None:

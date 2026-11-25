@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "run_id": "20261002T183500Z-fixture-sol_undecided",
+  "run_id": "20261002T183500Z-fixture-sol_undecided-3d852795",
   "created_at": "2026-10-02T18:35:00Z",
   "portfolio": "fixture",
   "strategy": "sol_undecided",
@@ -330,5 +330,220 @@
       "test": null
     }
   ],
-  "fill_estimate": null
+  "fill_estimate": null,
+  "config": {
+    "name": "fixture",
+    "mode": "paper",
+    "starting_balance": 1000.0,
+    "budget": null,
+    "env": "demo",
+    "interest_apy": 0.04,
+    "check_every": 5.0,
+    "max_snapshot_age": 120.0,
+    "risk": {
+      "max_allocation": null,
+      "daily_loss_cap": null,
+      "max_drawdown": null,
+      "max_open_positions": null,
+      "stop_if_losing_after": null,
+      "max_city_allocation": null
+    },
+    "fills": {
+      "missing_depth": "none"
+    },
+    "feeds": [],
+    "strategies": [
+      {
+        "name": "btc_edge",
+        "status": "active",
+        "series": "KXBTC15M",
+        "check_every": null,
+        "taker_fee_rate": 0.07,
+        "signal": {
+          "type": "extreme_favorite",
+          "threshold": 0.88,
+          "min_edge": 0.0,
+          "priors": {
+            "yes": {
+              "wins": 93,
+              "n": 100
+            },
+            "no": {
+              "wins": 93,
+              "n": 100
+            }
+          }
+        },
+        "gates": [
+          {
+            "type": "max_entry_price",
+            "value": 0.97
+          }
+        ],
+        "sizing": {
+          "type": "fixed",
+          "contracts": 5
+        },
+        "risk": {
+          "max_allocation": null,
+          "daily_loss_cap": null,
+          "max_drawdown": null,
+          "max_open_positions": 1,
+          "stop_if_losing_after": null,
+          "max_city_allocation": null
+        },
+        "exit": null
+      },
+      {
+        "name": "eth_no_edge",
+        "status": "active",
+        "series": "KXETH15M",
+        "check_every": null,
+        "taker_fee_rate": 0.07,
+        "signal": {
+          "type": "extreme_favorite",
+          "threshold": 0.88,
+          "min_edge": 0.0,
+          "priors": {
+            "yes": {
+              "wins": 93,
+              "n": 100
+            },
+            "no": {
+              "wins": 93,
+              "n": 100
+            }
+          }
+        },
+        "gates": [
+          {
+            "type": "max_entry_price",
+            "value": 0.97
+          }
+        ],
+        "sizing": {
+          "type": "fixed",
+          "contracts": 5
+        },
+        "risk": {
+          "max_allocation": null,
+          "daily_loss_cap": null,
+          "max_drawdown": null,
+          "max_open_positions": 1,
+          "stop_if_losing_after": null,
+          "max_city_allocation": null
+        },
+        "exit": null
+      },
+      {
+        "name": "sol_undecided",
+        "status": "active",
+        "series": "KXSOL15M",
+        "check_every": null,
+        "taker_fee_rate": 0.07,
+        "signal": {
+          "type": "extreme_favorite",
+          "threshold": 0.88,
+          "min_edge": 0.0,
+          "priors": {
+            "yes": {
+              "wins": 93,
+              "n": 100
+            },
+            "no": {
+              "wins": 93,
+              "n": 100
+            }
+          }
+        },
+        "gates": [
+          {
+            "type": "max_entry_price",
+            "value": 0.97
+          }
+        ],
+        "sizing": {
+          "type": "fixed",
+          "contracts": 5
+        },
+        "risk": {
+          "max_allocation": null,
+          "daily_loss_cap": null,
+          "max_drawdown": null,
+          "max_open_positions": 1,
+          "stop_if_losing_after": null,
+          "max_city_allocation": null
+        },
+        "exit": null
+      }
+    ],
+    "reporting": []
+  },
+  "fees": [
+    {
+      "portfolio": "fixture",
+      "strategy": "btc_edge",
+      "series": "KXBTC15M",
+      "taker_fee_rate": {
+        "rate": 0.07,
+        "source": "default",
+        "detail": "no fee schedule recorded for KXBTC15M; set taker_fee_rate"
+      },
+      "maker_fee_rate": null
+    },
+    {
+      "portfolio": "fixture",
+      "strategy": "eth_no_edge",
+      "series": "KXETH15M",
+      "taker_fee_rate": {
+        "rate": 0.07,
+        "source": "default",
+        "detail": "no fee schedule recorded for KXETH15M; set taker_fee_rate"
+      },
+      "maker_fee_rate": null
+    },
+    {
+      "portfolio": "fixture",
+      "strategy": "sol_undecided",
+      "series": "KXSOL15M",
+      "taker_fee_rate": {
+        "rate": 0.07,
+        "source": "default",
+        "detail": "no fee schedule recorded for KXSOL15M; set taker_fee_rate"
+      },
+      "maker_fee_rate": null
+    }
+  ],
+  "execution": {
+    "entry_fills": "walk the recorded order book as a taker (IOC)",
+    "missing_depth": "none",
+    "max_snapshot_age_seconds": 120.0
+  },
+  "dataset": {
+    "path": "nem.db",
+    "sha256": "2edbb491cc52911ce93b397b715a065617a6798263812d775ccba3ad00e32633",
+    "series": [
+      "KXSOL15M"
+    ],
+    "feeds": [],
+    "first_snapshot": "2026-10-01T00:00:00Z",
+    "last_snapshot": "2026-10-02T18:29:00Z",
+    "rows": {
+      "snapshots": 2550,
+      "settlements": 170,
+      "feed_values": 0,
+      "forecast_backfill": 0
+    }
+  },
+  "inputs": {
+    "holdout": 0.3
+  },
+  "engine": {
+    "name": "nem",
+    "version": "fixture",
+    "git_revision": null,
+    "git_dirty": null
+  },
+  "hypothesis": "fixture: SOL favorites at 88c+ beat their price",
+  "notes": null
 }

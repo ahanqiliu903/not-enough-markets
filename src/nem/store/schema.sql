@@ -59,8 +59,15 @@ CREATE TABLE orders (
     limit_price     REAL NOT NULL,
     qty             INTEGER NOT NULL CHECK (qty > 0),
     mode            TEXT NOT NULL CHECK (mode IN ('paper', 'live')),
-    status          TEXT NOT NULL
+    status          TEXT NOT NULL,     -- entry: submitted, then exactly one terminal status
+                                       -- (filled, partial, no_fill, rejected_over_risk,
+                                       -- cancelled); exit: exit_take_profit / exit_stop
+    kind            TEXT NOT NULL DEFAULT 'entry' CHECK (kind IN ('entry', 'exit')),  -- v9
+    filled_qty      INTEGER NOT NULL DEFAULT 0,  -- v9: set when terminal; filled +
+    cancelled_qty   INTEGER NOT NULL DEFAULT 0,  -- cancelled = qty (IOC remainder cancelled)
+    close_time      TEXT                         -- v9: the market's close, to rebuild a trade
 );
+CREATE INDEX orders_attempts ON orders (portfolio, strategy, window_id, side);
 
 CREATE TABLE fills (
     id              INTEGER PRIMARY KEY,
@@ -68,8 +75,10 @@ CREATE TABLE fills (
     ts              TEXT NOT NULL,
     price           REAL NOT NULL,
     qty             INTEGER NOT NULL CHECK (qty > 0),
-    fee             REAL NOT NULL
+    fee             REAL NOT NULL,
+    fill_id         TEXT               -- v9: execution identity; a duplicate is refused
 );
+CREATE UNIQUE INDEX fills_fill_id ON fills (fill_id);
 
 CREATE TABLE trades (
     portfolio    TEXT NOT NULL,
@@ -222,3 +231,11 @@ CREATE TABLE exit_learning (           -- trades closed by an exit (nem.engine.e
     FOREIGN KEY (portfolio, strategy, window_id) REFERENCES trades (portfolio, strategy, window_id)
 );
 CREATE INDEX exit_learning_pending ON exit_learning (learned_at);
+
+CREATE TABLE series_fees (             -- v10: a series' fee schedule as `nem run` read it
+    series         TEXT NOT NULL,      -- (GET /series/{ticker}); replay and suggest resolve
+    fee_type       TEXT NOT NULL,      -- null fee rates from the latest one recorded
+    fee_multiplier REAL NOT NULL,
+    fetched_at     TEXT NOT NULL,
+    PRIMARY KEY (series, fetched_at)
+);

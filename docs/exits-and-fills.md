@@ -118,9 +118,13 @@ Kalshi publishes how each series is charged at `GET /trade-api/v2/series/{ticker
   refuses to start (an edit is rejected and the old config keeps running).
 - `nem validate` looks up only null maker rates, so portfolios without a take-profit
   validate offline.
-- `nem replay`, `nem suggest` and `nem demo` never touch the network, and series metadata
-  isn't recorded in the store: a take-profit with a null maker rate stops them with an
-  error (set the rate; 0 on a `quadratic` series), and a null taker rate means 0.07.
+- `nem run` records each schedule it reads in its database (`series_fees`, schema v10).
+- `nem replay`, `nem suggest` and `nem demo` never touch the network. They resolve null
+  rates from the schedule recorded in the data they replay; with none recorded, a
+  take-profit with a null maker rate stops them with an error (set the rate; 0 on a
+  `quadratic` series), and a null taker rate is the default 0.07. Each prints every rate
+  with its source (`config`, `recorded_series` or `default`), and `nem suggest` saves
+  them with the run, so a schedule recorded later never changes a saved run.
 
 As of 2026-11 the KXHIGH* daily weather series report `quadratic`, multiplier 1: no maker
 fee. Kalshi changes this; check before trusting an old setting.

@@ -209,7 +209,8 @@ class StrategyConfig(_Strict):
     check_every: Duration | None = None  # null = the portfolio's default
     # Kalshi taker fee = round_up_to_cent(rate * contracts * price * (1 - price)).
     # null = 0.07 x the series' fee_multiplier, looked up when `nem run` starts; replay
-    # can't look it up and uses 0.07. A value here wins. Verify; it drifts.
+    # uses the schedule `nem run` recorded, else the labelled default 0.07. A value here
+    # wins. Verify; it drifts.
     taker_fee_rate: float | None = Field(default=None, ge=0, lt=1)
     signal: PluginSpec
     gates: list[PluginSpec] = Field(default_factory=list[PluginSpec])

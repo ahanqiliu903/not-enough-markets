@@ -12,6 +12,7 @@ from typing import Literal
 Side = Literal["yes", "no"]
 Mode = Literal["paper", "live"]
 DecisionKind = Literal["take", "skip", "no_fill"]
+OrderKind = Literal["entry", "exit"]
 StrikeType = Literal["greater", "greater_or_equal", "less", "less_or_equal", "between"]
 StrategyKey = tuple[str, str]  # (portfolio, strategy)
 
@@ -174,6 +175,23 @@ class Fill:
         _require_price("price", self.price)
         if self.qty <= 0:
             raise ValueError(f"qty must be positive, got {self.qty}")
+
+
+@dataclass(frozen=True, slots=True)
+class OrderRecord:
+    """An order as stored, with its lifecycle state (schema v9). Terminal entry orders
+    have `filled_qty + cancelled_qty == order.qty`: an IOC partial's remainder is
+    cancelled, never left resting."""
+
+    order: Order
+    ts: datetime
+    mode: Mode
+    kind: OrderKind
+    status: str
+    filled_qty: int
+    cancelled_qty: int
+    close_time: datetime | None  # the market's close; None on orders recorded before v9
+    fills: tuple[Fill, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

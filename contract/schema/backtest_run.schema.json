@@ -28,7 +28,8 @@
       "description": "report layout version; the app accepts major 1"
     },
     "run_id": {
-      "type": "string"
+      "type": "string",
+      "description": "<created_at>-<portfolio>-<strategy>[-<8 hex: hash of the run's inputs>][-<n>]; unique per folder (1.1 adds the hash and the -n suffix: a run never overwrites another)"
     },
     "created_at": {
       "type": "string",
@@ -148,6 +149,254 @@
         "null"
       ],
       "description": "pessimistic/realistic/optimistic range; null until modelled"
+    },
+    "config": {
+      "x-since": "1.1",
+      "type": "object",
+      "description": "the validated portfolio as replayed, every fee rate resolved (reporting settings and feed user_agent left out); nem rerun replays exactly this"
+    },
+    "fees": {
+      "x-since": "1.1",
+      "type": "array",
+      "description": "per non-retired strategy, each fee rate and where it came from",
+      "items": {
+        "type": "object",
+        "required": [
+          "portfolio",
+          "strategy",
+          "series",
+          "taker_fee_rate",
+          "maker_fee_rate"
+        ],
+        "properties": {
+          "portfolio": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "series": {
+            "type": "string"
+          },
+          "taker_fee_rate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "rate",
+                  "source",
+                  "detail"
+                ],
+                "properties": {
+                  "rate": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "fee rate (fraction); null only for an unresolved maker rate"
+                  },
+                  "source": {
+                    "enum": [
+                      "config",
+                      "recorded_series",
+                      "default",
+                      "unresolved"
+                    ],
+                    "description": "where the rate came from: the portfolio file, the series fee schedule recorded by nem run, the default 0.07 (taker), or unresolved"
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "maker_fee_rate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "rate",
+                  "source",
+                  "detail"
+                ],
+                "properties": {
+                  "rate": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "fee rate (fraction); null only for an unresolved maker rate"
+                  },
+                  "source": {
+                    "enum": [
+                      "config",
+                      "recorded_series",
+                      "default",
+                      "unresolved"
+                    ],
+                    "description": "where the rate came from: the portfolio file, the series fee schedule recorded by nem run, the default 0.07 (taker), or unresolved"
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "execution": {
+      "x-since": "1.1",
+      "type": "object",
+      "required": [
+        "entry_fills",
+        "missing_depth",
+        "max_snapshot_age_seconds"
+      ],
+      "description": "paper execution assumptions",
+      "properties": {
+        "entry_fills": {
+          "type": "string"
+        },
+        "missing_depth": {
+          "enum": [
+            "none",
+            "quote"
+          ]
+        },
+        "max_snapshot_age_seconds": {
+          "type": "number"
+        }
+      }
+    },
+    "dataset": {
+      "x-since": "1.1",
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "series",
+        "feeds",
+        "first_snapshot",
+        "last_snapshot",
+        "rows"
+      ],
+      "description": "identity of the replayed data: a content hash of every row the replay can read (one consistent read, row ids excluded)",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "database path as given to nem suggest"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "feeds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "first_snapshot": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "description": "UTC ISO 8601 with Z"
+        },
+        "last_snapshot": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "description": "UTC ISO 8601 with Z"
+        },
+        "rows": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "rows hashed, per table"
+        }
+      }
+    },
+    "inputs": {
+      "x-since": "1.1",
+      "type": "object",
+      "required": [
+        "holdout"
+      ],
+      "properties": {
+        "holdout": {
+          "type": "number",
+          "description": "latest share of the data held out for the test period"
+        }
+      }
+    },
+    "engine": {
+      "x-since": "1.1",
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "git_revision",
+        "git_dirty"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "git_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "git_dirty": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "hypothesis": {
+      "x-since": "1.1",
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "nem suggest --hypothesis"
+    },
+    "notes": {
+      "x-since": "1.1",
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "nem suggest --notes"
     }
   },
   "$defs": {
@@ -171,5 +420,6 @@
       },
       "description": "half-open [start, end)"
     }
-  }
+  },
+  "description": "1.1 manifest fields (x-since) are written by every 1.1 engine but optional here: runs saved by 1.0 lack them and can't be rerun"
 }

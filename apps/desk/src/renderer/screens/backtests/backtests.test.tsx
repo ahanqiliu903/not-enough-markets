@@ -129,6 +129,38 @@ describe("Backtests screen", () => {
     expect(document.querySelectorAll("td.heat-chosen")).toHaveLength(0);
   });
 
+  it("reproducibility: a run saved by 1.0 has no manifest", async () => {
+    act(() => useNav.setState({ screen: "backtests", params: { run: RUN.run_id } }));
+    mount(<BacktestsScreen />, snapshot({ backtests: [RUN] }));
+    expect(await screen.findByRole("region", { name: "Reproducibility" })).toHaveTextContent("can't be rerun");
+  });
+
+  it("reproducibility of a 1.1 run", async () => {
+    const run: BacktestRun = {
+      ...RUN,
+      schema_version: "1.1",
+      hypothesis: "synthetic favorites win",
+      fees: [
+        {
+          portfolio: "fixture",
+          strategy: "sol_undecided",
+          series: "KXSOL15M",
+          taker_fee_rate: { rate: 0.07, source: "default", detail: "no fee schedule recorded for KXSOL15M" },
+          maker_fee_rate: null,
+        },
+      ],
+      dataset: { path: "nem.db", sha256: "ab".repeat(32), first_snapshot: null, last_snapshot: null, rows: {} },
+      engine: { name: "nem", version: "0.0.1", git_revision: null, git_dirty: null },
+    };
+    act(() => useNav.setState({ screen: "backtests", params: { run: run.run_id } }));
+    mount(<BacktestsScreen />, snapshot({ backtests: [run] }));
+    const panel = await screen.findByRole("region", { name: "Reproducibility" });
+    expect(panel).toHaveTextContent("hypothesis: synthetic favorites win");
+    expect(panel).toHaveTextContent("taker fee 0.0700 (default: no fee schedule recorded for KXSOL15M)");
+    expect(panel).toHaveTextContent("sha256 abababababab");
+    expect(panel).toHaveTextContent(`nem rerun ${run.file}`);
+  });
+
   it("vs paper: backtest train/test next to the paper row, live not implemented", async () => {
     act(() => useNav.setState({ screen: "backtests", params: { run: RUN.run_id } }));
     mount(<BacktestsScreen />, snapshot({ backtests: [RUN] }));

@@ -2,8 +2,8 @@ import type { BacktestRun, VariantMetrics } from "@shared/data";
 
 /**
  * Renderer test data: the `basic` fixture's backtest run (contract/fixtures/basic/out/
- * backtests/20261002T183500Z-fixture-sol_undecided.json), trimmed to the fields that
- * differ per variant. The main-process tests read the file itself.
+ * backtests/), as a contract 1.0 run (no manifest), trimmed to the fields that differ per
+ * variant. The main-process tests read the file itself.
  */
 
 function m(o: Partial<VariantMetrics> & Pick<VariantMetrics, "trades" | "wins" | "edge_cents">): VariantMetrics {

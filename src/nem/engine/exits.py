@@ -4,9 +4,9 @@ Runs every tick on that tick's snapshots only, so an exit can only use a book re
 or before now and after the position opened (no look-ahead). A strategy without exits
 (the default) does nothing here and touches nothing in the store.
 
-An exit closes the position in the existing tables: an order row whose status names the
-exit kind (`EXIT_STATUS`), a fill, and the trade settled at the exit time with
-`realized_pnl` from the sale and `won = realized_pnl > 0`. The trade is also queued
+An exit closes the position in the existing tables, in one transaction: an order row whose
+status names the exit kind (`EXIT_STATUS`), a fill, and the trade settled at the exit time
+with `realized_pnl` from the sale and `won = realized_pnl > 0`. The trade is also queued
 (`exit_learning`, schema v7): learned win counts (`ctx.stat`) and `on_settle` mean "the
 side won at settlement", which isn't known when a position is sold early, so they are
 updated later, when the market settles (`nem.engine.settlement.learn_exits`).
@@ -43,11 +43,11 @@ def _record(trade: Trade, fill: ExitFill, store: Store) -> Trade:
         fill.limit_price,
         fill.qty,
     )
-    store.record_order(order, fill.ts, trade.mode, EXIT_STATUS[fill.kind])
-    store.record_fill(Fill(coid, fill.ts, fill.price, fill.qty, fill.fee))
     pnl = exit_pnl(trade, fill)
     won = pnl > 0
-    store.exit_trade((trade.portfolio, trade.strategy), trade.window_id, won, pnl, fill.ts)
+    # order, fill, closed trade and learning queue: one transaction (Store.record_exit)
+    sold = Fill(coid, fill.ts, fill.price, fill.qty, fill.fee)
+    store.record_exit(order, sold, EXIT_STATUS[fill.kind], trade.mode, won, pnl)
     log.info(
         "%s/%s %s %s: sold %d @ %.4f (fee %.2f) %+.2f",
         trade.portfolio, trade.strategy, fill.kind, trade.ticker, fill.qty, fill.price,

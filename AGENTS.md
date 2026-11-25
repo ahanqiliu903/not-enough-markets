@@ -121,6 +121,7 @@ uv run nem validate           # every portfolio file and plugin
 uv run nem run --once         # one live paper tick (smoke test)
 uv run nem run                # paper-trade continuously (records data too)
 uv run nem suggest PORTFOLIO STRATEGY --data data/nem.db --grid signal.threshold=0.88,0.9,0.92
+uv run nem rerun out/backtests/RUN_ID.json   # rerun a saved suggest run offline, check it matches
 uv run nem summary            # statistics per strategy
 uv run nem trade exclude TICKER --reason "..."   # treat a trade as never taken (stats and money)
 uv run nem trade include TICKER / uv run nem trade list --excluded

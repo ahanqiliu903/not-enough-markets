@@ -299,6 +299,28 @@ export interface BacktestRun extends BacktestRunInfo {
   variants: BacktestVariant[];
   /** Always null in contract 1.0 (no fill range is modelled yet). */
   fill_estimate: Record<string, unknown> | null;
+  /** Contract 1.1 manifest (`nem rerun`); absent in runs saved by 1.0 engines. */
+  fees?: BacktestFees[];
+  execution?: { entry_fills: string; missing_depth: string; max_snapshot_age_seconds: number };
+  dataset?: { path: string; sha256: string; first_snapshot: string | null; last_snapshot: string | null; rows: Record<string, number> };
+  engine?: { name: string; version: string | null; git_revision: string | null; git_dirty: boolean | null };
+  hypothesis?: string | null;
+  notes?: string | null;
+}
+
+export interface BacktestFeeRate {
+  rate: number | null;
+  /** Where the rate came from: config, recorded_series, default (0.07 taker) or unresolved. */
+  source: string;
+  detail: string;
+}
+
+export interface BacktestFees {
+  portfolio: string;
+  strategy: string;
+  series: string;
+  taker_fee_rate: BacktestFeeRate | null;
+  maker_fee_rate: BacktestFeeRate | null;
 }
 
 export type DataErrorKind =

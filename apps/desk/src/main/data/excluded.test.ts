@@ -71,8 +71,10 @@ describe("excluded trades", () => {
     expect(parseFilter({ hideExcluded: "yes" })).toEqual({});
   });
 
-  it("the database reader accepts schema v8", () => {
+  it("the database reader accepts schema v8 to v10", () => {
     expect(DB_SCHEMA_VERSIONS).toContain(8);
+    expect(DB_SCHEMA_VERSIONS).toContain(9);
+    expect(DB_SCHEMA_VERSIONS).toContain(10);
   });
 });
 
