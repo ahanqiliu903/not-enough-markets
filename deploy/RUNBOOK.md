@@ -186,4 +186,5 @@ scp nem@<server>:not-enough-markets/data/export.jsonl.gz .
 | Service keeps restarting | `journalctl -u nem-run -n 50`; a bad portfolio file at startup fails `nem validate` |
 | `Killed` with no traceback | memory: `journalctl -k \| grep -i oom`, raise `MemoryMax` or the droplet size |
 | `runner failing` (alive, errors) | Kalshi or network issue; it retries every poll. Halt if it persists |
+| `reconciled ...` / `unresolved ...` in the log at startup | a crash left an order half-recorded; paper orders are resolved from the database (`nem.engine.reconcile`). An `unresolved` one keeps blocking new entries for that strategy and market window until fixed by hand |
 | No trades | `nem status` (paused/halted?), `nem summary` (`skipped` shows which gate or risk limit blocked) |

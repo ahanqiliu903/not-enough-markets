@@ -64,6 +64,12 @@
   - `trades`: `excluded` (boolean; CSV text `true`/`false`, read absent as false) and
     `exclude_reason` (string, null when counted).
   - `summary` and `strategies`: `excluded_trades` (integer, settled and open).
+- SQLite schema v9: order lifecycle for atomic execution. `orders` gains `kind`
+  (`entry`/`exit`), `filled_qty`, `cancelled_qty` (terminal entry orders: filled +
+  cancelled = qty, the IOC remainder cancelled) and nullable `close_time`; `fills` gains
+  `fill_id` (unique). Entry `status` gains `cancelled` (an unknown outcome resolved on
+  startup). Existing databases are upgraded in place; no CSV/JSON column changed. NEM Desk
+  accepts v3 to v9.
   - Semantics: excluded trades are left out of every statistic (strategy row `trades`,
     `wins`, win rate, edge and intervals, `verdict`, `trades_to_detect`, `brier`, calibration,
     `exits`, and the row's `pnl_usd`, `pnl_per_trade_usd`, `roi`, `max_drawdown_usd`), of

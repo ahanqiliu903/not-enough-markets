@@ -7,7 +7,8 @@ process can read while the runner writes.
 import json
 import sqlite3
 from bisect import bisect_right
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Iterator, Sequence
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from datetime import UTC, date, datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
@@ -24,6 +25,8 @@ from nem.core.types import (
     MarketSnapshot,
     Mode,
     Order,
+    OrderKind,
+    OrderRecord,
     Settlement,
     Side,
     Signal,
@@ -35,7 +38,7 @@ if TYPE_CHECKING:
     from nem.backfill.model import BackfillRow
     from nem.settle.model import SettlementCheck
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # Upgrades for existing databases: MIGRATIONS[v] takes a database from v-1 to v. A fresh
 # database runs schema.sql (always the latest) instead.
@@ -155,13 +158,43 @@ MIGRATIONS: dict[int, str] = {
     WHERE t.settled_at IS NOT NULL AND o.status IN ('exit_take_profit', 'exit_stop');
     """,
     8: "",  # columns only: ADDED_COLUMNS
+    # After v9's columns are added: derive what older rows imply. An order already past
+    # `submitted` gets its filled quantity from its fills and the rest as cancelled (IOC);
+    # one still `submitted` is left for reconciliation (nem.engine.reconcile). Each order's
+    # first fill takes the order's id as its fill id (paper orders fill at most once).
+    9: """
+    UPDATE orders SET kind = 'exit' WHERE status IN ('exit_take_profit', 'exit_stop');
+    UPDATE orders SET filled_qty = COALESCE((SELECT SUM(f.qty) FROM fills f
+        WHERE f.client_order_id = orders.client_order_id), 0)
+    WHERE status != 'submitted' AND filled_qty = 0 AND cancelled_qty = 0;
+    UPDATE orders SET cancelled_qty = MAX(qty - filled_qty, 0)
+    WHERE status != 'submitted' AND filled_qty + cancelled_qty < qty;
+    UPDATE fills SET fill_id = client_order_id WHERE fill_id IS NULL AND id = (SELECT MIN(f.id)
+        FROM fills f WHERE f.client_order_id = fills.client_order_id);
+    UPDATE fills SET fill_id = client_order_id || '#' || id WHERE fill_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS fills_fill_id ON fills (fill_id);
+    CREATE INDEX IF NOT EXISTS orders_attempts ON orders (portfolio, strategy, window_id, side);
+    """,
 }
 
 # Columns a version adds to an existing table, as (table, column, type). Added only when
 # missing, so the upgrade is idempotent (SQLite has no ADD COLUMN IF NOT EXISTS).
 ADDED_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
     8: [("trades", "excluded_at", "TEXT"), ("trades", "exclude_reason", "TEXT")],
+    9: [
+        ("orders", "kind", "TEXT NOT NULL DEFAULT 'entry' CHECK (kind IN ('entry', 'exit'))"),
+        ("orders", "filled_qty", "INTEGER NOT NULL DEFAULT 0"),
+        ("orders", "cancelled_qty", "INTEGER NOT NULL DEFAULT 0"),
+        ("orders", "close_time", "TEXT"),
+        ("fills", "fill_id", "TEXT"),
+    ],
 }
+
+# Order lifecycle. An entry order is recorded `submitted` before it is sent, then moves to
+# exactly one terminal status; an exit order (all-or-nothing, decided and filled in one
+# step) is recorded already terminal. Nothing moves out of a terminal status.
+ENTRY_TERMINAL = frozenset({"filled", "partial", "no_fill", "rejected_over_risk", "cancelled"})
+EXIT_STATUSES = frozenset({"exit_take_profit", "exit_stop"})
 
 HEARTBEAT_RETENTION = timedelta(days=2)
 
@@ -185,6 +218,14 @@ def _depth_from_json(s: str) -> Depth:
     return {side: [(float(p), float(q)) for p, q in levels] for side, levels in raw.items()}
 
 
+# An entry order whose outcome isn't recorded: still submitted, or filled without a trade.
+_UNRESOLVED_ENTRY = (
+    "(o.status = 'submitted' OR (o.status IN ('filled', 'partial') AND NOT EXISTS"
+    " (SELECT 1 FROM trades t WHERE t.portfolio = o.portfolio AND t.strategy = o.strategy"
+    " AND t.window_id = o.window_id)))"
+)
+
+
 def _strategies_filter(strategies: Sequence[StrategyKey]) -> tuple[str, list[str]]:
     clause = " OR ".join(["(portfolio = ? AND strategy = ?)"] * len(strategies)) or "0"
     return f"({clause})", [part for key in strategies for part in key]
@@ -193,6 +234,7 @@ def _strategies_filter(strategies: Sequence[StrategyKey]) -> tuple[str, list[str
 class Store:
     def __init__(self, path: str | Path = ":memory:") -> None:
         self._conn = sqlite3.connect(path)
+        self._tx_depth = 0
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute("PRAGMA busy_timeout = 5000")
@@ -219,10 +261,32 @@ class Store:
             have = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
             if column not in have:
                 added += f"ALTER TABLE {table} ADD COLUMN {column} {kind};\n"
-        return MIGRATIONS[v] + added
+        return added + MIGRATIONS[v]  # columns first: a version's DDL may use them
 
     def close(self) -> None:
         self._conn.close()
+
+    @contextmanager
+    def transaction(self) -> Generator[Self]:
+        """Every write inside commits together, or none does (the block raised). Nests: an
+        inner block joins the outer one, so only the outermost commits."""
+        if self._tx_depth:
+            self._tx_depth += 1
+            try:
+                yield self
+            finally:
+                self._tx_depth -= 1
+            return
+        self._tx_depth = 1
+        try:
+            with self._conn:
+                yield self
+        finally:
+            self._tx_depth = 0
+
+    def _write(self) -> AbstractContextManager[object]:
+        """One write method's own transaction, or nothing inside `transaction()`."""
+        return nullcontext() if self._tx_depth else self._conn
 
     def __enter__(self) -> Self:
         return self
@@ -242,7 +306,7 @@ class Store:
 
     def insert_snapshots(self, snaps: Sequence[MarketSnapshot]) -> None:
         """Insert in one transaction (one poll's worth)."""
-        with self._conn:
+        with self._write():
             self._conn.executemany(
                 "INSERT INTO snapshots (ts, series, window_id, ticker, open_time, close_time,"
                 " yes_bid, yes_ask, no_bid, no_ask, depth_json, strike_type, floor_strike,"
@@ -328,11 +392,19 @@ class Store:
             found.update((r["id"], _snapshot(r)) for r in self._conn.execute(sql, chunk))
         return [None if p is None else found[p] for p in picked]
 
+    def market_close_time(self, ticker: str) -> datetime | None:
+        """The close time recorded with the market's snapshots, or None if never seen."""
+        row = self._conn.execute(
+            "SELECT close_time FROM snapshots WHERE ticker = ? ORDER BY ts DESC LIMIT 1",
+            (ticker,),
+        ).fetchone()
+        return None if row is None else _dt(row[0])
+
     # --- settlements --------------------------------------------------------
 
     def record_settlement(self, settlement: Settlement) -> None:
         """Idempotent: recording the same market twice keeps the first row."""
-        with self._conn:
+        with self._write():
             self._conn.execute(
                 "INSERT OR IGNORE INTO settlements (ticker, series, window_id, result, settled_at)"
                 " VALUES (?,?,?,?,?)",
@@ -378,7 +450,7 @@ class Store:
         reason: str,
         edge: float | None = None,
     ) -> int:
-        with self._conn:
+        with self._write():
             cur = self._conn.execute(
                 "INSERT INTO signals (ts, portfolio, strategy, window_id, ticker, side, price,"
                 " p_model, edge, decision, reason, meta_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -408,12 +480,30 @@ class Store:
         )
         return {r[0]: r[1] for r in rows}
 
-    def record_order(self, order: Order, ts: datetime, mode: Mode, status: str) -> int:
+    def record_order(
+        self,
+        order: Order,
+        ts: datetime,
+        mode: Mode,
+        status: str,
+        *,
+        kind: OrderKind = "entry",
+        close_time: datetime | None = None,
+    ) -> int:
+        """Record an order. An entry order starts `submitted` (written before it is sent, so
+        a crash leaves a visible unknown outcome); an exit order is recorded with its
+        terminal exit status and its whole quantity filled."""
+        if kind == "entry" and status != "submitted":
+            raise StoreError(f"an entry order starts submitted, not {status!r}")
+        if kind == "exit" and status not in EXIT_STATUSES:
+            raise StoreError(f"an exit order's status is one of {sorted(EXIT_STATUSES)}")
+        filled = order.qty if kind == "exit" else 0
         try:
-            with self._conn:
+            with self._write():
                 cur = self._conn.execute(
                     "INSERT INTO orders (ts, portfolio, strategy, client_order_id, window_id,"
-                    " ticker, side, limit_price, qty, mode, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    " ticker, side, limit_price, qty, mode, status, kind, filled_qty,"
+                    " cancelled_qty, close_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
                     (
                         _ts(ts),
                         order.portfolio,
@@ -426,19 +516,43 @@ class Store:
                         order.qty,
                         mode,
                         status,
+                        kind,
+                        filled,
+                        None if close_time is None else _ts(close_time),
                     ),
                 )
         except sqlite3.IntegrityError as e:
             raise StoreError(f"duplicate client_order_id {order.client_order_id}") from e
         return _lastrowid(cur)
 
-    def set_order_status(self, client_order_id: str, status: str) -> None:
-        with self._conn:
-            cur = self._conn.execute(
-                "UPDATE orders SET status = ? WHERE client_order_id = ?", (status, client_order_id)
-            )
-        if cur.rowcount != 1:
+    def set_order_status(
+        self, client_order_id: str, status: str, filled_qty: int | None = None
+    ) -> None:
+        """Move a submitted entry order to its terminal status, with how much filled (the
+        rest is cancelled: entries are IOC). `filled_qty` defaults to the whole order for
+        `filled` and to 0 otherwise; `partial` needs it. Any other move (out of a terminal
+        status, to an unknown one, or with a quantity that doesn't fit) is refused."""
+        row = self._conn.execute(
+            "SELECT status, kind, qty FROM orders WHERE client_order_id = ?", (client_order_id,)
+        ).fetchone()
+        if row is None:
             raise StoreError(f"no order {client_order_id}")
+        current, kind, qty = str(row[0]), str(row[1]), int(row[2])
+        if kind != "entry" or current != "submitted" or status not in ENTRY_TERMINAL:
+            raise StoreError(f"order {client_order_id}: illegal transition {current} -> {status}")
+        filled = (qty if status == "filled" else 0) if filled_qty is None else filled_qty
+        legal = {
+            "filled": filled == qty,
+            "partial": 0 < filled < qty,
+        }.get(status, filled == 0)
+        if not legal:
+            raise StoreError(f"order {client_order_id}: {status} with {filled} of {qty} filled")
+        with self._write():
+            self._conn.execute(
+                "UPDATE orders SET status = ?, filled_qty = ?, cancelled_qty = ?"
+                " WHERE client_order_id = ? AND status = 'submitted'",
+                (status, filled, qty - filled, client_order_id),
+            )
 
     def order_status(self, client_order_id: str) -> str | None:
         row = self._conn.execute(
@@ -446,21 +560,165 @@ class Store:
         ).fetchone()
         return None if row is None else row[0]
 
+    def order(self, client_order_id: str) -> OrderRecord | None:
+        """The stored order with its lifecycle state and fills, or None."""
+        row = self._conn.execute(
+            "SELECT * FROM orders WHERE client_order_id = ?", (client_order_id,)
+        ).fetchone()
+        return None if row is None else self._order_record(row)
+
+    def _order_record(self, r: sqlite3.Row) -> OrderRecord:
+        fills = self._conn.execute(
+            "SELECT * FROM fills WHERE client_order_id = ? ORDER BY id", (r["client_order_id"],)
+        )
+        return OrderRecord(
+            order=Order(
+                r["client_order_id"],
+                r["portfolio"],
+                r["strategy"],
+                r["window_id"],
+                r["ticker"],
+                r["side"],
+                r["limit_price"],
+                r["qty"],
+            ),
+            ts=_dt(r["ts"]),
+            mode=r["mode"],
+            kind=r["kind"],
+            status=r["status"],
+            filled_qty=r["filled_qty"],
+            cancelled_qty=r["cancelled_qty"],
+            close_time=None if r["close_time"] is None else _dt(r["close_time"]),
+            fills=tuple(
+                Fill(f["client_order_id"], _dt(f["ts"]), f["price"], f["qty"], f["fee"])
+                for f in fills
+            ),
+        )
+
     def order_attempts(self, key: StrategyKey, window_id: str, side: Side) -> int:
-        """Orders already sent for this strategy, window and side (next attempt number)."""
+        """Orders already sent for this strategy, window and side (next attempt number).
+        Only meaningful once `unresolved_attempt` is False: bump an attempt only after the
+        previous one is known dead."""
         row = self._conn.execute(
             "SELECT COUNT(*) FROM orders WHERE portfolio = ? AND strategy = ? AND window_id = ?"
-            " AND side = ?",
+            " AND side = ? AND kind = 'entry'",
             (*key, window_id, side),
         ).fetchone()
         return int(row[0])
 
-    def record_fill(self, fill: Fill) -> None:
-        with self._conn:
+    def unresolved_attempt(self, key: StrategyKey, window_id: str, side: Side) -> bool:
+        """True while an earlier entry for this strategy, window and side has an unknown
+        outcome: still `submitted`, or filled without its trade. No new attempt until it is
+        resolved (nem.engine.reconcile)."""
+        row = self._conn.execute(
+            "SELECT 1 FROM orders o WHERE o.portfolio = ? AND o.strategy = ?"
+            " AND o.window_id = ? AND o.side = ? AND o.kind = 'entry'"
+            f" AND {_UNRESOLVED_ENTRY} LIMIT 1",
+            (*key, window_id, side),
+        ).fetchone()
+        return row is not None
+
+    def unresolved_orders(self) -> list[OrderRecord]:
+        """Orders whose outcome isn't fully recorded, oldest first: entries still
+        `submitted` or filled without a trade, and exits without a fill or whose trade is
+        still open. What a crash between writes (or a pre-v9 database) can leave behind."""
+        rows = self._conn.execute(
+            "SELECT * FROM orders o WHERE (o.kind = 'entry' AND"
+            f" {_UNRESOLVED_ENTRY}) OR (o.kind = 'exit' AND (NOT EXISTS (SELECT 1 FROM fills f"
+            " WHERE f.client_order_id = o.client_order_id) OR EXISTS (SELECT 1 FROM trades t"
+            " WHERE t.portfolio = o.portfolio AND t.strategy = o.strategy"
+            " AND t.window_id = o.window_id AND t.settled_at IS NULL)))"
+            " ORDER BY o.ts, o.id"
+        ).fetchall()
+        return [self._order_record(r) for r in rows]
+
+    def unbooked_entry_fills(self) -> list[tuple[StrategyKey, str, int, int]]:
+        """Windows whose entry fills hold more contracts than their trade: (key, window_id,
+        filled contracts, trade contracts). Only an interrupted pre-v9 write leaves these;
+        the extra fills are in no position, so neither cash nor risk sees them."""
+        rows = self._conn.execute(
+            "SELECT o.portfolio, o.strategy, o.window_id, SUM(f.qty), t.qty FROM orders o"
+            " JOIN fills f ON f.client_order_id = o.client_order_id JOIN trades t"
+            " ON t.portfolio = o.portfolio AND t.strategy = o.strategy"
+            " AND t.window_id = o.window_id WHERE o.kind = 'entry'"
+            " GROUP BY o.portfolio, o.strategy, o.window_id HAVING SUM(f.qty) > t.qty"
+            " ORDER BY o.portfolio, o.strategy, o.window_id"
+        )
+        return [((r[0], r[1]), r[2], int(r[3]), int(r[4])) for r in rows]
+
+    def discard_order(self, client_order_id: str) -> None:
+        """Delete an exit order that never filled (pre-v9 crash between its writes), so the
+        position can exit again under the same deterministic id. Refused for anything else."""
+        rec = self.order(client_order_id)
+        if rec is None or rec.kind != "exit" or rec.fills:
+            raise StoreError(f"order {client_order_id}: only an unfilled exit can be discarded")
+        with self._write():
+            self._conn.execute("DELETE FROM orders WHERE client_order_id = ?", (client_order_id,))
+
+    def record_fill(self, fill: Fill) -> bool:
+        """Record a fill once. Paper orders fill at most once (IOC entry, all-or-nothing
+        exit), so the order's id is the fill's identity: the same fill again is a no-op
+        (False), a different fill for the same order is refused."""
+        existing = self._conn.execute(
+            "SELECT ts, price, qty, fee FROM fills WHERE fill_id = ?", (fill.client_order_id,)
+        ).fetchone()
+        if existing is not None:
+            same = (existing[0], existing[1], existing[2], existing[3]) == (
+                _ts(fill.ts), fill.price, fill.qty, fill.fee
+            )  # fmt: skip
+            if same:
+                return False
+            raise StoreError(f"order {fill.client_order_id} already has a different fill")
+        with self._write():
             self._conn.execute(
-                "INSERT INTO fills (client_order_id, ts, price, qty, fee) VALUES (?,?,?,?,?)",
-                (fill.client_order_id, _ts(fill.ts), fill.price, fill.qty, fill.fee),
+                "INSERT INTO fills (client_order_id, ts, price, qty, fee, fill_id)"
+                " VALUES (?,?,?,?,?,?)",
+                (
+                    fill.client_order_id,
+                    _ts(fill.ts),
+                    fill.price,
+                    fill.qty,
+                    fill.fee,
+                    fill.client_order_id,
+                ),
             )
+        return True
+
+    # --- execution outcomes: each one transaction ----------------------------------
+
+    def record_entry(self, fill: Fill, trade: Trade) -> bool:
+        """One paper entry's outcome, all or nothing: the fill, the order's terminal status
+        (`filled`, or `partial` with the IOC remainder cancelled) and the open trade. False
+        (and nothing changes) for a fill already recorded: a duplicate can't debit twice."""
+        with self.transaction():
+            rec = self.order(fill.client_order_id)
+            if rec is None:
+                raise StoreError(f"no order {fill.client_order_id}")
+            if not self.record_fill(fill):
+                return False
+            status = "filled" if fill.qty == rec.order.qty else "partial"
+            self.set_order_status(fill.client_order_id, status, fill.qty)
+            self.open_trade(trade)
+        return True
+
+    def record_exit(
+        self, order: Order, fill: Fill, status: str, mode: Mode, won: bool, realized_pnl: float
+    ) -> bool:
+        """One exit's outcome, all or nothing: the exit order, its fill, the trade closed and
+        queued for learning. False (and nothing changes) if this exit is already recorded."""
+        with self.transaction():
+            rec = self.order(order.client_order_id)
+            if rec is not None and rec.fills:
+                if rec.fills != (fill,):
+                    raise StoreError(f"order {order.client_order_id} already has a different fill")
+                return False
+            if rec is not None:
+                raise StoreError(f"exit order {order.client_order_id} has no fill; reconcile first")
+            self.record_order(order, fill.ts, mode, status, kind="exit")
+            self.record_fill(fill)
+            key = (order.portfolio, order.strategy)
+            self.exit_trade(key, order.window_id, won, realized_pnl, fill.ts)
+        return True
 
     # --- trades -------------------------------------------------------------
 
@@ -468,7 +726,7 @@ class Store:
         if trade.settled:
             raise StoreError("open_trade takes an unsettled trade")
         try:
-            with self._conn:
+            with self._write():
                 self._conn.execute(
                     "INSERT INTO trades (portfolio, strategy, window_id, ticker, side, avg_price,"
                     " qty, fee, mode, opened_at, close_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -499,7 +757,7 @@ class Store:
         realized_pnl: float,
         settled_at: datetime,
     ) -> None:
-        with self._conn:
+        with self._write():
             cur = self._conn.execute(
                 "UPDATE trades SET won = ?, realized_pnl = ?, settled_at = ?"
                 " WHERE portfolio = ? AND strategy = ? AND window_id = ? AND settled_at IS NULL",
@@ -507,6 +765,27 @@ class Store:
             )
         if cur.rowcount != 1:
             raise StoreError(f"no open trade for {key[0]}/{key[1]} {window_id}")
+
+    def settle_and_learn(
+        self, trade: Trade, won: bool, realized_pnl: float, settled_at: datetime
+    ) -> bool:
+        """Settle a held trade and count its outcome in its side's learned stat, in one
+        transaction. False (and nothing changes) if it is already settled, so settling the
+        same result twice can't count it twice."""
+        key = (trade.portfolio, trade.strategy)
+        with self.transaction():
+            row = self._conn.execute(
+                "SELECT settled_at FROM trades WHERE portfolio = ? AND strategy = ?"
+                " AND window_id = ?",
+                (*key, trade.window_id),
+            ).fetchone()
+            if row is None:
+                raise StoreError(f"no trade {key[0]}/{key[1]} {trade.window_id}")
+            if row[0] is not None:
+                return False
+            self.settle_trade(key, trade.window_id, won, realized_pnl, settled_at)
+            self.bump_stat(*key, trade.side, won)
+        return True
 
     def exit_trade(
         self,
@@ -518,7 +797,7 @@ class Store:
     ) -> None:
         """Close a trade sold before settlement (`won` = P&L > 0) and queue it, in the same
         transaction, for learning once its market settles (`learning_due`)."""
-        with self._conn:
+        with self._write():
             cur = self._conn.execute(
                 "UPDATE trades SET won = ?, realized_pnl = ?, settled_at = ?"
                 " WHERE portfolio = ? AND strategy = ? AND window_id = ? AND settled_at IS NULL",
@@ -546,7 +825,7 @@ class Store:
         """Record an exited trade's settlement outcome and bump its side's learned count,
         once: False (and nothing changes) if it was already learned or never queued."""
         key = (trade.portfolio, trade.strategy)
-        with self._conn:
+        with self._write():
             cur = self._conn.execute(
                 "UPDATE exit_learning SET won = ?, learned_at = ?"
                 " WHERE portfolio = ? AND strategy = ? AND window_id = ? AND learned_at IS NULL",
@@ -660,7 +939,7 @@ class Store:
         limits, as if it had never been taken."""
         if (reason is None) != (ts is None):
             raise StoreError("set_excluded takes both a reason and a time, or neither")
-        with self._conn:
+        with self._write():
             cur = self._conn.execute(
                 "UPDATE trades SET excluded_at = ?, exclude_reason = ?"
                 " WHERE portfolio = ? AND strategy = ? AND window_id = ?",
@@ -707,7 +986,7 @@ class Store:
 
     def add_ledger(self, portfolio: str, ts: datetime, kind: str, amount: float) -> bool:
         """Idempotent per (portfolio, kind, ts). Returns False if it was already there."""
-        with self._conn:
+        with self._write():
             cur = self._conn.execute(
                 "INSERT OR IGNORE INTO ledger (portfolio, ts, kind, amount) VALUES (?,?,?,?)",
                 (portfolio, _ts(ts), kind, amount),
@@ -739,7 +1018,7 @@ class Store:
 
     def add_manual_lots(self, lots: Sequence[ManualLot], imported_at: datetime) -> int:
         """Idempotent per (portfolio, lot_key). Returns how many lots were new."""
-        with self._conn:
+        with self._write():
             before = self._conn.total_changes
             self._conn.executemany(
                 "INSERT OR IGNORE INTO manual_lots (portfolio, strategy, lot_key, ticker, side,"
@@ -810,7 +1089,7 @@ class Store:
 
     def add_manual_fills(self, fills: Sequence[ManualFill], imported_at: datetime) -> int:
         """Idempotent per (portfolio, fill_key). Returns how many fills were new."""
-        with self._conn:
+        with self._write():
             before = self._conn.total_changes
             self._conn.executemany(
                 "INSERT OR IGNORE INTO manual_fills (portfolio, fill_key, ticker, side, qty,"
@@ -862,7 +1141,7 @@ class Store:
 
     def save_settlement_checks(self, checks: Sequence["SettlementCheck"]) -> None:
         """Insert or replace by ticker: a re-check overwrites the previous one."""
-        with self._conn:
+        with self._write():
             self._conn.executemany(
                 f"INSERT OR REPLACE INTO settlement_checks ({', '.join(_CHECK_COLUMNS)})"
                 f" VALUES ({', '.join('?' * len(_CHECK_COLUMNS))})",
@@ -890,7 +1169,7 @@ class Store:
     def save_backfill(self, rows: Sequence["BackfillRow"]) -> int:
         """Insert or replace by (source, station, target date, field, run): a re-fetch of
         the same model run overwrites it. Returns the number of rows written."""
-        with self._conn:
+        with self._write():
             self._conn.executemany(
                 f"INSERT OR REPLACE INTO forecast_backfill ({', '.join(_BACKFILL_COLUMNS)})"
                 f" VALUES ({', '.join('?' * len(_BACKFILL_COLUMNS))})",
@@ -917,7 +1196,7 @@ class Store:
 
     def record_feed_values(self, values: Sequence[FeedValue], recorded_at: datetime) -> None:
         """Idempotent per (feed, key, known_at)."""
-        with self._conn:
+        with self._write():
             self._conn.executemany(
                 "INSERT OR IGNORE INTO feed_values (feed, key, value, known_at, recorded_at)"
                 " VALUES (?,?,?,?,?)",
@@ -950,7 +1229,7 @@ class Store:
     # --- stats, heartbeats ---------------------------------------------------
 
     def bump_stat(self, portfolio: str, strategy: str, key: str, won: bool) -> None:
-        with self._conn:
+        with self._write():
             self._conn.execute(
                 "INSERT INTO stats (portfolio, strategy, key, wins, n) VALUES (?, ?, ?, ?, 1)"
                 " ON CONFLICT (portfolio, strategy, key)"
@@ -989,7 +1268,7 @@ class Store:
         portfolio: str | None = None,
         strategy: str | None = None,
     ) -> None:
-        with self._conn:
+        with self._write():
             self._conn.execute(
                 "INSERT INTO heartbeats (ts, process, portfolio, strategy, status)"
                 " VALUES (?,?,?,?,?)",
@@ -1022,7 +1301,7 @@ class Store:
 
     def halt(self, scope: str, reason: str, ts: datetime) -> None:
         """Stop new entries. Scope: "*" (everything), "portfolio" or "portfolio/strategy"."""
-        with self._conn:
+        with self._write():
             self._conn.execute(
                 "INSERT INTO halts (scope, reason, ts) VALUES (?,?,?)"
                 " ON CONFLICT (scope) DO UPDATE SET reason = excluded.reason, ts = excluded.ts",
@@ -1030,7 +1309,7 @@ class Store:
             )
 
     def resume(self, scope: str) -> bool:
-        with self._conn:
+        with self._write():
             cur = self._conn.execute("DELETE FROM halts WHERE scope = ?", (scope,))
         return cur.rowcount == 1
 

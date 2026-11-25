@@ -10,9 +10,10 @@
  * `manual_fills` tables (imported manual trading), v5 only `settlement_checks`
  * (`nem settle verify`), v6 only `forecast_backfill` (`nem backfill forecasts`), v7
  * only `exit_learning` (exited trades learned from at settlement) and v8 only the `trades`
- * columns `excluded_at` / `exclude_reason` (`nem trade exclude`); nothing read here changed.
+ * columns `excluded_at` / `exclude_reason` (`nem trade exclude`), v9 only the order lifecycle
+ * columns of `orders` / `fills` (atomic execution); nothing read here changed.
  */
-export const DB_SCHEMA_VERSIONS = [3, 4, 5, 6, 7, 8] as const;
+export const DB_SCHEMA_VERSIONS = [3, 4, 5, 6, 7, 8, 9] as const;
 
 export type DbErrorKind =
   /** The active source has no database attached or found. */

@@ -21,6 +21,7 @@ from nem.core.config import PortfolioConfig
 from nem.core.context import Context
 from nem.core.types import FeedValue, Trade
 from nem.engine.exits import run_exits
+from nem.engine.reconcile import reconcile
 from nem.engine.runtime import (
     BuildError,
     FeedRuntime,
@@ -65,6 +66,8 @@ class Runner:
         self.data = data or store
         self.clock = clock
         self._by_key = {rt.key: rt for rt in self.strategies}
+        # Before any new attempt: resolve what a crash between writes left half-recorded.
+        self.reconciliation = reconcile(store, self.data)
 
     def _check_prints(self, strategies: Sequence[StrategyRuntime]) -> None:
         if self._traded is not None:

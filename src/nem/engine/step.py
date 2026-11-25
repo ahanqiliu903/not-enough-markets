@@ -96,6 +96,12 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         _log(rt, store, sig, ctx, "skip", f"size_zero: {sizing.reason}")
         return None
 
+    # One attempt at a time: an earlier attempt whose outcome isn't recorded (a crash
+    # between writes) blocks a new one until reconciliation resolves it.
+    if store.unresolved_attempt(rt.key, sig.window_id, sig.side):
+        _log(rt, store, sig, ctx, "skip", "order:unresolved_attempt")
+        return None
+
     # Risk sees what the order would actually cost, fees included: the broker's quote walks
     # the same levels with the same per-level fee rounding as the fill itself.
     now = ctx.now()
@@ -108,11 +114,14 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         _log(rt, store, sig, ctx, "skip", d.reason)
         return None
 
-    store.record_order(order, now, rt.broker.mode, "submitted")
+    # Written before the order is sent: a crash from here on leaves a visible `submitted`
+    # order (an unknown outcome) instead of nothing. Its outcome is then one transaction.
+    store.record_order(order, now, rt.broker.mode, "submitted", close_time=snap.close_time)
     fill = rt.broker.submit(order, snap, now)
     if fill is None:
-        store.set_order_status(order.client_order_id, "no_fill")
-        _log(rt, store, sig, ctx, "no_fill", rt.broker.no_fill_reason(order, snap))
+        with store.transaction():
+            store.set_order_status(order.client_order_id, "no_fill")
+            _log(rt, store, sig, ctx, "no_fill", rt.broker.no_fill_reason(order, snap))
         return None
     if fill_cost(fill) > approved + COST_EPS:
         # Can't happen with the paper broker (the quote is exact); never book more than
@@ -121,12 +130,11 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
             "%s/%s fill cost %.6f above approved %.6f; not booked",
             *rt.key, fill_cost(fill), approved,
         )  # fmt: skip
-        store.set_order_status(order.client_order_id, "rejected_over_risk")
-        _log(rt, store, sig, ctx, "skip", "risk:fill_above_approved_cost")
+        with store.transaction():
+            store.set_order_status(order.client_order_id, "rejected_over_risk")
+            _log(rt, store, sig, ctx, "skip", "risk:fill_above_approved_cost")
         return None
 
-    store.record_fill(fill)
-    store.set_order_status(order.client_order_id, "filled" if fill.qty == order.qty else "partial")
     trade = Trade(
         portfolio=sig.portfolio,
         strategy=sig.strategy,
@@ -140,8 +148,9 @@ def evaluate(rt: StrategyRuntime, snap: MarketSnapshot, ctx: Context, store: Sto
         opened_at=now,
         close_time=snap.close_time,
     )
-    store.open_trade(trade)
-    _log(rt, store, sig, ctx, "take", f"ok: {sizing.reason}")
+    with store.transaction():  # fill, terminal status, position and its log: all or nothing
+        store.record_entry(fill, trade)
+        _log(rt, store, sig, ctx, "take", f"ok: {sizing.reason}")
     log.info(
         "%s/%s bought %d %s %s @ %.4f (fee %.2f)",
         *rt.key, fill.qty, sig.side.upper(), sig.ticker, fill.price, fill.fee,

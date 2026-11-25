@@ -70,9 +70,11 @@ Verdict tiers in NEM Desk derive only from `verdict` and `edge_cents` (see the s
 
 ## SQLite (`data/nem.db`)
 
-Schema version 8 (`PRAGMA user_version`; readers accept 3 to 8: v4 only added the
+Schema version 9 (`PRAGMA user_version`; readers accept 3 to 9: v4 only added the
 `manual_*` tables, v5 only `settlement_checks`, v6 only `forecast_backfill`, v7 only
-`exit_learning`, v8 only the nullable `trades` columns `excluded_at`, `exclude_reason`);
+`exit_learning`, v8 only the nullable `trades` columns `excluded_at`, `exclude_reason`,
+v9 only the order lifecycle columns `orders.kind`, `filled_qty`, `cancelled_qty`,
+`close_time` and `fills.fill_id`);
 DDL and comments in
 [`src/nem/store/schema.sql`](../src/nem/store/schema.sql). Open it read-only, ideally a
 consistent snapshot (`sqlite3 data/nem.db ".backup snap.db"`), never a raw copy of a live
@@ -83,7 +85,7 @@ file. Timestamps here are `isoformat` with `+00:00` and microseconds (they sort 
 | `snapshots` | top of book (`yes_bid/yes_ask/no_bid/no_ask`, dollars) and `depth_json` (`{"yes": [[price, size], ...], "no": [...]}`, best first) per market per poll |
 | `settlements` | each market's `result` (`yes`/`no`) and `settled_at` |
 | `signals` | every signal, taken or not: `decision` (`take`/`skip`/`no_fill`) and `reason` (e.g. `gate:max_entry_price`, `risk:strategy:stop_if_losing_after`) |
-| `trades`, `orders`, `fills` | positions and how they were filled; `trades.excluded_at` / `exclude_reason` (v8) set = excluded (`nem trade exclude`) |
+| `trades`, `orders`, `fills` | positions and how they were filled; `trades.excluded_at` / `exclude_reason` (v8) set = excluded (`nem trade exclude`). An entry order is `submitted`, then one terminal `status` (`filled`, `partial`, `no_fill`, `rejected_over_risk`, `cancelled`) with `filled_qty` + `cancelled_qty` = `qty` (v9); exit orders (`kind = 'exit'`) are `exit_take_profit` / `exit_stop` |
 | `feed_values` | external data: `feed`, `key`, `value`, `known_at` (when it became knowable) |
 | `heartbeats`, `halts` | process health and the kill switch |
 | `manual_lots`, `manual_fills` | imported manual trading (`nem import kalshi-pnl`), `provenance = manual_import`; never traded by the engine ([docs/data-provenance.md](../docs/data-provenance.md)) |

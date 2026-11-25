@@ -35,8 +35,9 @@ def settle_due(
         won = result.result == t.side
         pnl = realized_pnl(t, won)
         key = (t.portfolio, t.strategy)
-        store.settle_trade(key, t.window_id, won, pnl, result.settled_at)
-        store.bump_stat(*key, t.side, won)
+        # the trade and its learned count commit together, once (a repeat is a no-op)
+        if not store.settle_and_learn(t, won, pnl, result.settled_at):
+            continue
         log.info("%s/%s %s %s: %+.2f", *key, t.ticker, "won" if won else "lost", pnl)
         done = replace(t, won=won, realized_pnl=pnl, settled_at=result.settled_at)
         settled.append(done)
