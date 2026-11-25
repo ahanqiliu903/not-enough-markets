@@ -17,7 +17,7 @@ additions are unreleased and already written (see [CHANGELOG.md](CHANGELOG.md)).
 | Google Sheets tabs `<portfolio> summary/strategies/trades/equity` | `nem report` (`sheets` reporter) | same rows as the CSVs (`equity` from 1.1) | same |
 | `nem summary --json` | CLI | summary + strategies, plus per-strategy `signal_reasons` and `calibration` | `schema/summary_report.schema.json` |
 | `nem status --json` | CLI (exit code 2 if unhealthy) | process heartbeats, halts, per-strategy activity | `schema/status.schema.json` |
-| `out/backtests/<run_id>.json` | `nem suggest` (`--save`) | one parameter sweep: grid, windows, every variant's train metrics, the chosen variant's test metrics | `schema/backtest_run.schema.json` |
+| `out/backtests/<run_id>.json` | `nem suggest` (`--save`) | one parameter sweep: grid, windows, every variant's train metrics, the chosen variant's test metrics, and (1.1) the manifest `nem rerun` reproduces it from | `schema/backtest_run.schema.json` |
 | `data/nem.db` | `nem run` / `nem record` | SQLite, raw data (below) | `src/nem/store/schema.sql` |
 
 ## Rules
@@ -65,16 +65,17 @@ that need care:
 | `equity.csv` (1.1, whole table) | `ts`: every hour on the hour from the hour of the portfolio's first activity, then the report's `as_of` (the last row). `realized_pnl_usd`: trades settled at or before `ts`; `interest_usd`: ledger before `ts`; `book_value_usd` = start + both (open positions at cost; the last row equals the summary's `equity_usd`). `unrealized_pnl_usd`: trades open at `ts`, marked as the trade mark columns are but at `ts` (latest snapshot at or before `ts`, 15-minute staleness, closed market, uncovered contracts at $0); `open_unmarked` of `open_positions` have no fresh book and count at cost (0). `value_usd` = book + unrealized. Excluded trades are left out at every point. Written only by `nem report` (not `nem summary`); a reader must treat a missing file as "not available" (older 1.x engine), not an error. The schema carries `"x-since": "1.1"` at the top level |
 | backtest `variants[].test` | held-out metrics, present **only for the chosen variant**: showing every variant's test result would invite choosing on test data |
 | backtest `fill_estimate` | always `null` in 1.0: fills walk the recorded book, no range is modelled yet |
+| backtest `config`, `fees`, `execution`, `dataset`, `inputs`, `engine`, `hypothesis`, `notes` (1.1) | the run's manifest: the resolved portfolio (reporting and feed `user_agent` left out), each fee rate with its `source` (`config`, `recorded_series`, `default`, `unresolved`), fill assumptions, a SHA-256 of the replayed rows, holdout, engine version / git revision. Optional in the schema (1.0 runs lack them); always written by 1.1 engines. `run_id` gains a hash of the inputs and, if the file exists, `-2`, `-3`, ...: a run never overwrites another |
 
 Verdict tiers in NEM Desk derive only from `verdict` and `edge_cents` (see the spec).
 
 ## SQLite (`data/nem.db`)
 
-Schema version 9 (`PRAGMA user_version`; readers accept 3 to 9: v4 only added the
+Schema version 10 (`PRAGMA user_version`; readers accept 3 to 10: v4 only added the
 `manual_*` tables, v5 only `settlement_checks`, v6 only `forecast_backfill`, v7 only
 `exit_learning`, v8 only the nullable `trades` columns `excluded_at`, `exclude_reason`,
 v9 only the order lifecycle columns `orders.kind`, `filled_qty`, `cancelled_qty`,
-`close_time` and `fills.fill_id`);
+`close_time` and `fills.fill_id`, v10 only `series_fees`);
 DDL and comments in
 [`src/nem/store/schema.sql`](../src/nem/store/schema.sql). Open it read-only, ideally a
 consistent snapshot (`sqlite3 data/nem.db ".backup snap.db"`), never a raw copy of a live

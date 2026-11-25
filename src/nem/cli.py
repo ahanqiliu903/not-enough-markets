@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from nem.backtest.types import Grid, ParamValue
     from nem.core.config import PortfolioConfig
     from nem.core.types import Trade
+    from nem.market.fees import StrategyFees
     from nem.market.kalshi import KalshiClient, SeriesFees
     from nem.settle.provisional import Provisional
     from nem.stats.report import MarkKey, PortfolioReport
@@ -56,7 +57,7 @@ HELP_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Getting started", ("init", "demo")),
     ("Portfolios and strategies", ("portfolio new", "portfolio list", "portfolio show",
                                    "strategy add", "validate")),
-    ("Backtest", ("replay", "suggest", "import kalshi-history", "history replay",
+    ("Backtest", ("replay", "suggest", "rerun", "import kalshi-history", "history replay",
                   "history suggest")),
     ("Paper trading", ("run",)),
     ("Results", ("summary", "report", "trade exclude", "trade include", "trade list")),
@@ -205,6 +206,15 @@ def build_parser() -> tuple[argparse.ArgumentParser, Commands]:
         "--save", type=Path, default=Path("out/backtests"),
         help="folder for the run's JSON, read by NEM Desk (default: out/backtests)",
     )  # fmt: skip
+    sug.add_argument("--hypothesis", help="what the run tests, saved with it")
+    sug.add_argument("--notes", help="free text saved with the run")
+    rer = cmds.add(sub, "rerun", (
+        "rerun a saved suggest run offline from its manifest and check it reproduces exactly"
+    ))  # fmt: skip
+    rer.add_argument("run", type=Path, help="saved run, e.g. out/backtests/<run_id>.json")
+    rer.add_argument(
+        "--data", type=Path, help="database the run used (default: the path saved in the run)"
+    )
 
     demo = cmds.add(sub, "demo", "replay the bundled sample data with the example portfolios")
     demo.add_argument("--data", type=Path, default=DEMO_DATA, help="recorded fixture (.jsonl.gz)")
@@ -580,7 +590,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     from nem.engine.runner import Runner, run_live
     from nem.engine.runtime import BuildError
     from nem.market.fees import resolve_fees
-    from nem.market.kalshi import KalshiClient
+    from nem.market.kalshi import KalshiClient, SeriesFees
     from nem.market.recorder import Recorder
     from nem.market.source import KalshiSource, ReplaySource, Tick
     from nem.store import Store
@@ -591,13 +601,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     clock = SystemClock()
     client = KalshiClient("prod")  # market data is always real; orders are paper
     # null fee rates come from each series' fee schedule; unreadable = refuse to start
+    read: list[tuple[SeriesFees, datetime]] = []  # recorded below, for replay and suggest
+
+    def series_fees(series: str) -> SeriesFees:
+        fees = client.series_fees(series)
+        read.append((fees, clock.now()))
+        return fees
+
     try:
-        portfolios = resolve_fees(_load(directory), client.series_fees)
+        portfolios = resolve_fees(_load(directory), series_fees)
     except BaseException:
         client.close()
         raise
     extra: list[str] = args.record_series or []
     with Store(db) as store:
+        for fees, at in read:
+            store.record_series_fees(fees, at)
+        read.clear()
         source = KalshiSource(client, clock, depth=args.depth)
         # the embedded recorder stores results, so settlement reads them from the store
         runner = Runner(portfolios, ReplaySource(store), store, clock)
@@ -612,7 +632,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             if current != signature:
                 signature = current
                 try:
-                    edited = resolve_fees(load_portfolios(directory), client.series_fees)
+                    edited = resolve_fees(load_portfolios(directory), series_fees)
+                    for fees, at in read:
+                        store.record_series_fees(fees, at)
+                    read.clear()
                     runner.reload(edited)
                     log.info("reloaded portfolios: trading %s", ", ".join(runner.series))
                 except (ConfigError, BuildError) as e:
@@ -763,8 +786,11 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
     if is_history_db(args.data):
         raise SystemExit(f"{args.data} is a history file (changed quotes only); use nem history")
-    portfolios = _load(args.dir)
+    from nem.market.fees import resolve_fees_offline
+
     with Store(args.data) as data:
+        portfolios, fees = resolve_fees_offline(_load(args.dir), data.series_fees)
+        _print_fees(fees)
         source = ReplaySource(data, args.start, args.end)
         first = next(iter(data.iter_snapshots(None, args.start, args.end)), None)
         if first is None:
@@ -783,9 +809,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 
 def cmd_suggest(args: argparse.Namespace) -> int:
-    from nem.backtest.export import run_data, save_run
-    from nem.backtest.suggest import render_suggestion, strategy_yaml, suggest
-    from nem.backtest.sweep import run_sweep, split
+    from nem.backtest.export import manifest, save_run, sweep_and_suggest, sweep_run_data
+    from nem.backtest.suggest import render_suggestion, strategy_yaml
     from nem.manage import append_strategy, portfolio_path
     from nem.stats.provenance import QUOTE_FILLS_LABEL, uses_quote_fills
     from nem.store import Store
@@ -798,26 +823,25 @@ def cmd_suggest(args: argparse.Namespace) -> int:
     if base is None:
         raise SystemExit(f"no portfolio {args.portfolio!r} in {args.dir}/")
     try:
-        strategy = base.strategy(args.strategy)
+        base.strategy(args.strategy)
     except KeyError:
         raise SystemExit(f"{base.name} has no strategy {args.strategy!r}") from None
     # every variant logs every fill; the summary below is what matters
     logging.getLogger("nem.engine").setLevel(logging.WARNING)
     with Store(args.data) as data:
-        train, test = split(data, [strategy.series], args.holdout)
-        print(f"train {train.start:%Y-%m-%d %H:%M} to {train.end:%Y-%m-%d %H:%M} UTC, "
-              f"test {test.start:%Y-%m-%d %H:%M} to {test.end:%Y-%m-%d %H:%M} UTC")  # fmt: skip
-        results = run_sweep(data, base, args.strategy, grid, [train, test])
-    s = suggest(grid, results[train], results[test], min_trades=args.min_trades)
+        run = sweep_and_suggest(
+            data, base, args.strategy, grid, holdout=args.holdout, min_trades=args.min_trades
+        )
+    train, test, s = run.train, run.test, run.suggestion
+    _print_fees(run.fees)
+    print(f"train {train.start:%Y-%m-%d %H:%M} to {train.end:%Y-%m-%d %H:%M} UTC, "
+          f"test {test.start:%Y-%m-%d %H:%M} to {test.end:%Y-%m-%d %H:%M} UTC")  # fmt: skip
     if uses_quote_fills(base):
         print(f"[{QUOTE_FILLS_LABEL}]")
     print(render_suggestion(s, grid))
-    run = run_data(
-        s, grid, portfolio=base.name, strategy=args.strategy, series=strategy.series,
-        train=train, test=test, train_results=results[train], min_trades=args.min_trades,
-        created_at=datetime.now(UTC).replace(microsecond=0),
-    )  # fmt: skip
-    print(f"\nrun saved: {save_run(run, args.save)}")
+    fields = manifest(run, data_label=str(args.data), hypothesis=args.hypothesis, notes=args.notes)
+    doc = sweep_run_data(run, datetime.now(UTC).replace(microsecond=0), fields)
+    print(f"\nrun saved: {save_run(doc, args.save)} (rerun offline: nem rerun FILE)")
     if s.status != "suggested":
         return 0
     block = strategy_yaml(s, args.strategy)
@@ -828,6 +852,37 @@ def cmd_suggest(args: argparse.Namespace) -> int:
         where = portfolio_path(args.dir, base.name)
         print(f"\nTo paper-trade it, rerun with --write, or add this under strategies: in {where}")
         print(block)
+    return 0
+
+
+def _print_fees(fees: "Sequence[StrategyFees]") -> None:
+    """Where every fee rate of a replay comes from (config, recorded schedule, default)."""
+    for f in fees:
+        print(f"fees {f.describe()}")
+    if fees:
+        print()
+
+
+def cmd_rerun(args: argparse.Namespace) -> int:
+    """Rerun a saved `nem suggest` run from its manifest: the saved resolved config and
+    inputs on the same rows (checked by content hash). Exit 1 if any result differs."""
+    from nem.backtest.export import RerunError, load_run, rerun
+    from nem.store import Store
+
+    logging.getLogger("nem.engine").setLevel(logging.WARNING)
+    try:
+        saved = load_run(args.run)
+        data_path = Path(args.data or saved["dataset"]["path"])
+        if not data_path.exists():
+            raise RerunError(f"{data_path}: no such database (pass --data)")
+        with Store(data_path) as data:
+            _, differs = rerun(saved, data)
+    except RerunError as e:
+        raise SystemExit(f"can't rerun: {e}") from None
+    if differs:
+        print(f"{args.run}: NOT reproduced; these results differ: {', '.join(differs)}")
+        return 1
+    print(f"{args.run}: reproduced exactly (same data sha256, config and results)")
     return 0
 
 
@@ -1256,6 +1311,7 @@ COMMANDS = {
     "run": cmd_run,
     "replay": cmd_replay,
     "suggest": cmd_suggest,
+    "rerun": cmd_rerun,
     "summary": cmd_summary,
     "report": cmd_report,
     "status": cmd_status,

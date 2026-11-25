@@ -237,5 +237,5 @@ def test_v3_database_is_migrated(tmp_path: Path) -> None:
         import_kalshi_pnl(s, PNL, NOW)
         assert len(s.manual_lots("manual_baseline")) == 6
     conn = sqlite3.connect(db)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 10
     conn.close()

@@ -231,3 +231,11 @@ CREATE TABLE exit_learning (           -- trades closed by an exit (nem.engine.e
     FOREIGN KEY (portfolio, strategy, window_id) REFERENCES trades (portfolio, strategy, window_id)
 );
 CREATE INDEX exit_learning_pending ON exit_learning (learned_at);
+
+CREATE TABLE series_fees (             -- v10: a series' fee schedule as `nem run` read it
+    series         TEXT NOT NULL,      -- (GET /series/{ticker}); replay and suggest resolve
+    fee_type       TEXT NOT NULL,      -- null fee rates from the latest one recorded
+    fee_multiplier REAL NOT NULL,
+    fetched_at     TEXT NOT NULL,
+    PRIMARY KEY (series, fetched_at)
+);

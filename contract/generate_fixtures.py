@@ -22,9 +22,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from nem.backtest.export import run_data, save_run
-from nem.backtest.suggest import suggest
-from nem.backtest.sweep import run_sweep, split
+from nem.backtest.export import manifest, save_run, sweep_and_suggest, sweep_run_data
 from nem.backtest.types import Grid
 from nem.builtins import load_builtins
 from nem.core.clock import ManualClock
@@ -38,6 +36,8 @@ from nem.stats.report import SCHEMA_VERSION, build_report, report_data
 from nem.store import Store
 
 ROOT = Path(__file__).parent / "fixtures"
+# Saved runs record the engine's revision; the fixture must not change with every commit.
+FIXTURE_ENGINE = {"name": "nem", "version": "fixture", "git_revision": None, "git_dirty": None}
 SEED = 20261120
 START = datetime(2026, 10, 1, tzinfo=UTC)
 WINDOWS = 170  # per series: about 500 trades across the three strategies
@@ -174,15 +174,13 @@ def basic(root: Path) -> None:
             status_data(store, [portfolio], as_of, ["runner", "reporter"], timedelta(minutes=2)),
         )
         grid: Grid = {"signal.threshold": [0.86, 0.88, 0.90, 0.92], "gates.0.value": [0.95, 0.97]}
-        train, test = split(store, ["KXSOL15M"], 0.3)
-        results = run_sweep(store, portfolio, "sol_undecided", grid, [train, test])
-        s = suggest(grid, results[train], results[test], min_trades=20)
-        run = run_data(
-            s, grid, portfolio="fixture", strategy="sol_undecided", series="KXSOL15M",
-            train=train, test=test, train_results=results[train], min_trades=20,
-            created_at=as_of,
+        run = sweep_and_suggest(store, portfolio, "sol_undecided", grid, holdout=0.3, min_trades=20)
+        fields = manifest(
+            run, data_label="nem.db", hypothesis="fixture: SOL favorites at 88c+ beat their price",
+            engine=FIXTURE_ENGINE,
         )  # fmt: skip
-        save_run(run, root / "out" / "backtests")
+        doc = sweep_run_data(run, as_of, fields)
+        save_run(doc, root / "out" / "backtests")
     _clean_db(db)
 
 

@@ -4,6 +4,7 @@ Rows are keyed by (portfolio, strategy). File databases use WAL, so a separate r
 process can read while the runner writes.
 """
 
+import hashlib
 import json
 import sqlite3
 from bisect import bisect_right
@@ -36,9 +37,10 @@ from nem.core.types import (
 
 if TYPE_CHECKING:
     from nem.backfill.model import BackfillRow
+    from nem.market.kalshi import SeriesFees
     from nem.settle.model import SettlementCheck
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # Upgrades for existing databases: MIGRATIONS[v] takes a database from v-1 to v. A fresh
 # database runs schema.sql (always the latest) instead.
@@ -174,6 +176,15 @@ MIGRATIONS: dict[int, str] = {
     UPDATE fills SET fill_id = client_order_id || '#' || id WHERE fill_id IS NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS fills_fill_id ON fills (fill_id);
     CREATE INDEX IF NOT EXISTS orders_attempts ON orders (portfolio, strategy, window_id, side);
+    """,
+    10: """
+    CREATE TABLE IF NOT EXISTS series_fees (
+        series         TEXT NOT NULL,
+        fee_type       TEXT NOT NULL,
+        fee_multiplier REAL NOT NULL,
+        fetched_at     TEXT NOT NULL,
+        PRIMARY KEY (series, fetched_at)
+    );
     """,
 }
 
@@ -1225,6 +1236,104 @@ class Store:
         return [
             FeedValue(r["feed"], r["key"], r["value"], _dt(r["known_at"])) for r in reversed(rows)
         ]
+
+    # --- series fee schedules (recorded by nem run, read by replay and suggest) ----------
+
+    def record_series_fees(self, fees: "SeriesFees", fetched_at: datetime) -> bool:
+        """Keep a series' fee schedule as `nem run` read it. A schedule equal to the
+        latest recorded one adds nothing (False)."""
+        latest = self.series_fees(fees.series)
+        if latest is not None and latest[0] == fees:
+            return False
+        with self._write():
+            self._conn.execute(
+                "INSERT OR IGNORE INTO series_fees (series, fee_type, fee_multiplier, fetched_at)"
+                " VALUES (?,?,?,?)",
+                (fees.series, fees.fee_type, fees.fee_multiplier, _ts(fetched_at)),
+            )
+        return True
+
+    def series_fees(self, series: str) -> "tuple[SeriesFees, datetime] | None":
+        """The latest recorded fee schedule of `series` and when it was read, or None."""
+        from nem.market.kalshi import SeriesFees
+
+        row = self._conn.execute(
+            "SELECT fee_type, fee_multiplier, fetched_at FROM series_fees WHERE series = ?"
+            " ORDER BY fetched_at DESC LIMIT 1",
+            (series,),
+        ).fetchone()
+        if row is None:
+            return None
+        return SeriesFees(series, row[0], row[1]), _dt(row[2])
+
+    # --- dataset identity (saved backtest runs) ------------------------------------------
+
+    def dataset_identity(self, series: Sequence[str], feeds: Sequence[str]) -> dict[str, Any]:
+        """A content hash of every row a replay of `series` (with `feeds`) can read:
+        their snapshots, the settlements of those markets, the feeds' values and backfilled
+        forecasts. Recorded fee schedules are left out: a run saves the rates it resolved,
+        so a schedule recorded later can't change (or invalidate) a past run. Read in one
+        transaction, so it describes one consistent state of the database (never the raw
+        file, which a live writer and its WAL change). Row ids are left out: the same
+        content gives the same hash."""
+        digest = hashlib.sha256()
+        rows: dict[str, int] = {}
+        series = sorted(set(series))
+        feeds = sorted(set(feeds))
+        s_in = ",".join("?" * len(series)) or "NULL"
+        f_in = ",".join("?" * len(feeds)) or "NULL"
+        queries: dict[str, tuple[str, list[str]]] = {
+            "snapshots": (
+                "SELECT ts, series, window_id, ticker, open_time, close_time, yes_bid, yes_ask,"
+                " no_bid, no_ask, depth_json, strike_type, floor_strike, cap_strike FROM"
+                f" snapshots WHERE series IN ({s_in}) ORDER BY ts, id",
+                series,
+            ),
+            "settlements": (
+                "SELECT ticker, series, window_id, result, settled_at FROM settlements WHERE"
+                f" ticker IN (SELECT ticker FROM snapshots WHERE series IN ({s_in}))"
+                " ORDER BY ticker",
+                series,
+            ),
+            "feed_values": (
+                "SELECT feed, key, value, known_at FROM feed_values"
+                f" WHERE feed IN ({f_in}) ORDER BY feed, key, known_at",
+                feeds,
+            ),
+            "forecast_backfill": (
+                "SELECT source, station, target_date, field, value, run_time, valid_from,"
+                " known_at, run_id FROM forecast_backfill"
+                " ORDER BY source, station, target_date, field, run_time",
+                [],
+            ),
+        }
+        start: str | None = None
+        end: str | None = None
+        began = not self._conn.in_transaction
+        if began:
+            self._conn.execute("BEGIN")
+        try:
+            for table, (sql, args) in queries.items():
+                digest.update(f"\n#{table}\n".encode())
+                n = 0
+                for r in self._conn.execute(sql, args):
+                    digest.update(json.dumps(list(r), separators=(",", ":")).encode() + b"\n")
+                    n += 1
+                    if table == "snapshots":
+                        start = start or r[0]
+                        end = r[0]
+                rows[table] = n
+        finally:
+            if began:
+                self._conn.execute("COMMIT")
+        return {
+            "sha256": digest.hexdigest(),
+            "series": series,
+            "feeds": feeds,
+            "first_snapshot": None if start is None else _dt(start),
+            "last_snapshot": None if end is None else _dt(end),
+            "rows": rows,
+        }
 
     # --- stats, heartbeats ---------------------------------------------------
 

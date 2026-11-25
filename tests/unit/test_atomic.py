@@ -404,4 +404,4 @@ def test_v8_database_is_upgraded(tmp_path: Path) -> None:
         (fill,) = rec.fills
         assert store.record_fill(fill) is False  # its id was backfilled
         assert store.order_status(submitted.client_order_id) == "submitted"
-    assert sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 9
+    assert sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 10

@@ -8,7 +8,7 @@ import { loadSource } from "./source";
 /** DESK-015..017: backtest runs reach the renderer whole; DESK-014: status.json. */
 
 const BASIC = resolve(import.meta.dirname, "../../../../../contract/fixtures/basic");
-const RUN = "out/backtests/20261002T183500Z-fixture-sol_undecided.json";
+const RUN = "out/backtests/20261002T183500Z-fixture-sol_undecided-3d852795.json";
 const tmps: string[] = [];
 
 function copyBasic(): string {
@@ -37,6 +37,9 @@ describe("backtest runs", () => {
     expect(run?.variants).toHaveLength(8);
     expect(run?.variants.filter((v) => v.test !== null).map((v) => v.name)).toEqual(["v00"]);
     expect(run?.variants[0]?.train.edge_cents).toBe(3.07);
+    // contract 1.1 manifest: what `nem rerun` reproduces the run from
+    expect(run?.dataset?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(run?.fees?.find((f) => f.strategy === "sol_undecided")?.taker_fee_rate?.source).toBe("default");
   });
 
   it("an invalid run is a DataError naming the file; other runs still load", () => {

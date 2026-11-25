@@ -146,7 +146,7 @@ def test_v7_database_is_migrated(tmp_path: Path) -> None:
         _exclude(s, found)
         assert s.stat(*KEY, "yes") == (0, 0)
     assert sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
-    assert SCHEMA_VERSION == 9
+    assert SCHEMA_VERSION == 10
 
 
 # --- context and risk ---------------------------------------------------------------------
